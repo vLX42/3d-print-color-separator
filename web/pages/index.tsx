@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { quantize } from "@/lib/quantize";
 import { separateColors } from "@/lib/separateColors";
 import { joinSvg } from "@/lib/joinSvg";
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,6 +34,11 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [debug, setDebug] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  
+  // STL conversion state
+  const [colorDepths, setColorDepths] = useState<Record<string, number>>({});
+  const [isConvertingSTL, setIsConvertingSTL] = useState(false);
+  const [stlProgress, setStlProgress] = useState(0);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -84,6 +91,10 @@ export default function Home() {
       const quantizeResult = await quantizeResponse.json();
       const quantizedPalette = quantizeResult.palette || quantizeResult;
       setPalette(quantizedPalette);
+      
+      // Initialize color depths for STL conversion
+      initializeColorDepths(quantizedPalette);
+      
       setProgress(40);
       
       // Wait a bit to ensure state is updated
@@ -154,6 +165,95 @@ export default function Home() {
       setProgress(0);
     } finally {
       setIsConverting(false);
+    }
+  };
+
+  // Initialize color depths when palette is set
+  const initializeColorDepths = (paletteColors: number[][]) => {
+    const depths: Record<string, number> = {};
+    paletteColors.forEach((color) => {
+      const hexColor = color.map((c: number) => c.toString(16).padStart(2, '0')).join('');
+      depths[hexColor] = 2.0; // Default 2mm depth
+    });
+    setColorDepths(depths);
+  };
+
+  // Update color depth
+  const updateColorDepth = (color: string, depth: number) => {
+    setColorDepths(prev => ({
+      ...prev,
+      [color]: depth
+    }));
+  };
+
+  // Convert SVG to STL
+  const convertToSTL = async (exportType: 'combined' | 'separate' = 'combined') => {
+    if (!joinedSvg) {
+      alert('Please complete the SVG conversion first');
+      return;
+    }
+
+    setIsConvertingSTL(true);
+    setStlProgress(0);
+
+    try {
+      setStlProgress(25);
+
+      const response = await fetch('/api/convert-stl', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          svgContent: joinedSvg,
+          depths: colorDepths,
+          exportType
+        }),
+      });
+
+      setStlProgress(75);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`STL conversion failed: ${errorText}`);
+      }
+
+      const result = await response.json();
+      setStlProgress(90);
+
+      if (!result.success) {
+        throw new Error(result.error || 'STL conversion failed');
+      }
+
+      // Download the files
+      if (result.data.type === 'combined') {
+        // Single STL file
+        const stlContent = result.data.files[0].content;
+        const blob = new Blob([stlContent], { type: 'application/octet-stream' });
+        saveAs(blob, result.data.files[0].filename);
+      } else {
+        // Multiple STL files - create ZIP
+        const zip = new JSZip();
+        result.data.files.forEach((file: any) => {
+          zip.file(file.filename, file.content);
+        });
+        
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        saveAs(zipBlob, 'color-layers.zip');
+      }
+
+      setStlProgress(100);
+      
+      // Reset progress after a moment
+      setTimeout(() => setStlProgress(0), 2000);
+
+    } catch (error) {
+      console.error('STL conversion failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`STL conversion failed: ${errorMessage}`);
+      setStlProgress(0);
+    } finally {
+      setIsConvertingSTL(false);
     }
   };
 
@@ -522,6 +622,100 @@ export default function Home() {
                   </CardContent>
                 </Card>
               </div>
+            </div>
+          )}
+          
+          {/* STL Conversion Section */}
+          {joinedSvg && (
+            <div className="mt-8">
+              <Card className="shadow-lg border-0 bg-gradient-to-br from-green-50 to-emerald-50">
+                <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-t-lg">
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-lg">🔷</span>
+                    </div>
+                    3D Print Ready (Beta)
+                    <span className="text-xs bg-white/20 px-2 py-1 rounded-full ml-auto">NEW</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-semibold text-gray-800 mb-3">🎛️ Layer Depths</h3>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Adjust the thickness (in mm) for each color layer. Higher values create more prominent features.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {palette && palette.map((color, index) => {
+                          const hexColor = color.map((c: number) => c.toString(16).padStart(2, '0')).join('');
+                          return (
+                            <div key={index} className="flex items-center gap-3 p-3 bg-white rounded-lg border">
+                              <div 
+                                className="w-6 h-6 rounded border-2 border-gray-300"
+                                style={{ backgroundColor: `#${hexColor}` }}
+                              />
+                              <div className="flex-1">
+                                <Label className="text-sm font-medium">Color {index + 1}</Label>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Slider
+                                    value={[colorDepths[hexColor] || 2.0]}
+                                    onValueChange={(value) => updateColorDepth(hexColor, value[0])}
+                                    max={10}
+                                    min={0.5}
+                                    step={0.1}
+                                    className="flex-1"
+                                  />
+                                  <span className="text-sm text-gray-600 w-12">
+                                    {(colorDepths[hexColor] || 2.0).toFixed(1)}mm
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        onClick={() => convertToSTL('combined')}
+                        disabled={isConvertingSTL}
+                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                      >
+                        {isConvertingSTL ? 'Converting...' : '📦 Download Single STL'}
+                      </Button>
+                      <Button
+                        onClick={() => convertToSTL('separate')}
+                        disabled={isConvertingSTL}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {isConvertingSTL ? 'Converting...' : '📁 Download Layer Files'}
+                      </Button>
+                    </div>
+                    
+                    {stlProgress > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Converting to STL...</span>
+                          <span>{stlProgress}%</span>
+                        </div>
+                        <Progress value={stlProgress} className="h-2" />
+                      </div>
+                    )}
+                    
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-blue-800 mb-2">💡 3D Printing Tips</h4>
+                      <ul className="text-sm text-blue-700 space-y-1">
+                        <li>• <strong>Single STL:</strong> Creates one multi-layer model for sequential printing</li>
+                        <li>• <strong>Layer Files:</strong> Separate STL files for manual layer assembly</li>
+                        <li>• <strong>Depth Guidelines:</strong> 0.5-2mm for thin details, 3-5mm for prominent features</li>
+                        <li>• <strong>Print Settings:</strong> Use 0.2mm layer height for best detail resolution</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
           
