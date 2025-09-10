@@ -311,7 +311,7 @@ export default function Home() {
     try {
       setStlProgress(25);
 
-      const response = await fetch("/api/convert-stl-new", {
+      const response = await fetch("/api/convert-stl", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

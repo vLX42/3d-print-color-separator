@@ -1,10 +1,19 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { SVGTo3D } from '../../src/lib/svgTo3D';
+import { renderSVG } from '../../src/lib/svgTo3D';
+import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
+import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+import * as THREE from 'three';
+import JSZip from 'jszip';
 
 interface STLRequest {
   svgContent: string;
-  depths?: Record<string, number>;
+  colorDepths?: Record<string, number>;
   exportType: 'combined' | 'separate';
+  qualitySettings?: {
+    curveSegments: number;
+    scaleFactor: number;
+    overlapAmount?: number;
+  };
 }
 
 interface STLResponse {
@@ -25,9 +34,9 @@ interface STLResponse {
   error?: string;
 }
 
-export default function handler(
+export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<STLResponse>
+  res: NextApiResponse
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({
@@ -37,7 +46,7 @@ export default function handler(
   }
 
   try {
-    const { svgContent, depths = {}, exportType }: STLRequest = req.body;
+    const { svgContent, colorDepths = {}, exportType, qualitySettings }: STLRequest = req.body;
 
     if (!svgContent) {
       return res.status(400).json({
@@ -46,57 +55,64 @@ export default function handler(
       });
     }
 
-    // Initialize SVG to 3D converter
-    const converter = new SVGTo3D();
+    // Use renderSVG to get the 3D object with proper quality settings
+    const result = renderSVG(svgContent, colorDepths, qualitySettings);
     
-    // Parse the SVG
-    converter.parseSVG(svgContent);
-    
-    // Update depths if provided
-    Object.entries(depths).forEach(([color, depth]) => {
-      converter.updateDepth(color, depth);
-    });
-    
-    const colorLayers = converter.getColorLayers();
-    
-    if (colorLayers.length === 0) {
+    if (!result || !result.svgGroup || result.svgGroup.children.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No valid paths found in SVG'
       });
     }
 
-    let files: Array<{
-      filename: string;
-      content: string;
-      color?: string;
-    }> = [];
+    const exporter = new STLExporter();
 
     if (exportType === 'combined') {
-      // Export single multi-color STL
-      const stlContent = converter.exportMultiColorSTL();
-      files = [{
-        filename: 'multicolor-print.stl',
-        content: stlContent
-      }];
+      // Export single combined STL
+      const stlContent = exporter.parse(result.svgGroup);
+      
+      // Return binary STL file
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="combined.stl"');
+      res.status(200).send(Buffer.from(stlContent));
+      
     } else {
-      // Export separate STL files
-      const separateSTLs = converter.exportSeparateSTLs();
-      files = Array.from(separateSTLs.entries()).map(([color, content]) => ({
-        filename: `layer-${color}.stl`,
-        content,
-        color
-      }));
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        type: exportType,
-        files,
-        colors: colorLayers
+      // Export separate STL files as ZIP
+      const zip = new JSZip();
+      const colorGroups = new Map<string, THREE.Group>();
+      
+      // Group meshes by color
+      result.svgGroup.children.forEach((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material as THREE.MeshBasicMaterial;
+          const colorHex = material.color.getHexString();
+          
+          if (!colorGroups.has(colorHex)) {
+            colorGroups.set(colorHex, new THREE.Group());
+          }
+          
+          // Clone the mesh for the color group
+          const clonedMesh = child.clone();
+          colorGroups.get(colorHex)!.add(clonedMesh);
+        }
+      });
+      
+      // Export each color group as separate STL and add to ZIP
+      for (const [colorHex, group] of colorGroups.entries()) {
+        if (group.children.length > 0) {
+          const stlContent = exporter.parse(group);
+          zip.file(`layer-${colorHex}.stl`, stlContent);
+        }
       }
-    });
+      
+      // Generate ZIP file as buffer
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+      
+      // Return ZIP file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="stl-layers.zip"');
+      res.status(200).send(zipBuffer);
+    }
 
   } catch (error) {
     console.error('STL conversion error:', error);
