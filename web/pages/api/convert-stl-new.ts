@@ -34,9 +34,9 @@ interface STLResponse {
   error?: string;
 }
 
-export default function handler(
+export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<STLResponse>
+  res: NextApiResponse
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({
@@ -66,21 +66,19 @@ export default function handler(
     }
 
     const exporter = new STLExporter();
-    let files: Array<{
-      filename: string;
-      content: string;
-      color?: string;
-    }> = [];
 
     if (exportType === 'combined') {
       // Export single combined STL
       const stlContent = exporter.parse(result.svgGroup);
-      files = [{
-        filename: 'combined.stl',
-        content: stlContent
-      }];
+      
+      // Return binary STL file
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="combined.stl"');
+      res.status(200).send(Buffer.from(stlContent));
+      
     } else {
-      // Export separate STL files by color (overlap is handled in renderSVG)
+      // Export separate STL files as ZIP
+      const zip = new JSZip();
       const colorGroups = new Map<string, THREE.Group>();
       
       // Group meshes by color
@@ -99,34 +97,22 @@ export default function handler(
         }
       });
       
-      // Export each color group as separate STL
+      // Export each color group as separate STL and add to ZIP
       for (const [colorHex, group] of colorGroups.entries()) {
         if (group.children.length > 0) {
           const stlContent = exporter.parse(group);
-          files.push({
-            filename: `layer-${colorHex}.stl`,
-            content: stlContent,
-            color: colorHex
-          });
+          zip.file(`layer-${colorHex}.stl`, stlContent);
         }
       }
+      
+      // Generate ZIP file as buffer
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+      
+      // Return ZIP file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="stl-layers.zip"');
+      res.status(200).send(zipBuffer);
     }
-
-    // Create color info for response
-    const colors = Array.from(result.byColor.entries()).map(([color, meshes]) => ({
-      color,
-      depth: colorDepths[color] || 2.0,
-      pathCount: meshes.length
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: {
-        type: exportType,
-        files,
-        colors
-      }
-    });
 
   } catch (error) {
     console.error('STL conversion error:', error);

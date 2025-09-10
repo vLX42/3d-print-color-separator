@@ -342,7 +342,7 @@ export default function Home() {
 
       // Set filename based on export type
       if (exportType === "separate") {
-        a.download = "stl-files.zip";
+        a.download = "stl-layers.zip";
       } else {
         a.download = "combined.stl";
       }
