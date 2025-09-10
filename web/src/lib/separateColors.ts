@@ -42,8 +42,8 @@ export const separateColors = (
     const b = data[i + 2];
     const a = data[i + 3];
 
-    // Skip transparent pixels
-    if (a === 0) continue;
+    // Skip transparent and semi-transparent pixels (alpha < 128 is considered transparent)
+    if (a < 128) continue;
 
     const pixelColor = [r, g, b];
 
