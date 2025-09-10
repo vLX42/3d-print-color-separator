@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
+import { JSDOM } from 'jsdom';
 
 interface ColorLayer {
   color: string;
@@ -25,9 +26,9 @@ export class SVGTo3D {
 
   // Parse SVG and extract color layers
   parseSVG(svgContent: string): void {
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-    const paths = svgDoc.querySelectorAll('path');
+    const dom = new JSDOM(svgContent, { contentType: 'image/svg+xml' });
+    const document = dom.window.document;
+    const paths = document.querySelectorAll('path');
     
     this.colorLayers.clear();
 
