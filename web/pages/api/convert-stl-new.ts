@@ -1,10 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { SVGTo3D } from '../../src/lib/svgTo3D';
+import { renderSVG } from '../../src/lib/svgTo3D';
+import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
+import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+import * as THREE from 'three';
+import JSZip from 'jszip';
 
 interface STLRequest {
   svgContent: string;
-  depths?: Record<string, number>;
+  colorDepths?: Record<string, number>;
   exportType: 'combined' | 'separate';
+  qualitySettings?: {
+    curveSegments: number;
+    scaleFactor: number;
+  };
 }
 
 interface STLResponse {
@@ -37,7 +45,7 @@ export default function handler(
   }
 
   try {
-    const { svgContent, depths = {}, exportType }: STLRequest = req.body;
+    const { svgContent, colorDepths = {}, exportType, qualitySettings }: STLRequest = req.body;
 
     if (!svgContent) {
       return res.status(400).json({
@@ -46,19 +54,17 @@ export default function handler(
       });
     }
 
-    // Initialize SVG to 3D converter
-    const converter = new SVGTo3D();
+    // Use renderSVG to get the 3D object with proper quality settings
+    const result = renderSVG(svgContent, colorDepths, qualitySettings);
     
-    // Get color layers directly from SVG (new simplified approach)
-    const colorLayers = converter.getColorLayers(svgContent);
-    
-    if (colorLayers.length === 0) {
+    if (!result || !result.svgGroup || result.svgGroup.children.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No valid paths found in SVG'
       });
     }
 
+    const exporter = new STLExporter();
     let files: Array<{
       filename: string;
       content: string;
@@ -66,28 +72,58 @@ export default function handler(
     }> = [];
 
     if (exportType === 'combined') {
-      // Export single multi-color STL (like the working example)
-      const stlContent = converter.exportMultiColorSTL(svgContent, depths);
+      // Export single combined STL
+      const stlContent = exporter.parse(result.svgGroup);
       files = [{
-        filename: 'multicolor-print.stl',
+        filename: 'combined.stl',
         content: stlContent
       }];
     } else {
-      // Export separate STL files (like the working example)
-      const separateSTLs = converter.exportSeparateSTLs(svgContent, depths);
-      files = Array.from(separateSTLs.entries()).map(([color, content]) => ({
-        filename: `layer-${color}.stl`,
-        content,
-        color
-      }));
+      // Export separate STL files by color
+      const colorGroups = new Map<string, THREE.Group>();
+      
+      // Group meshes by color
+      result.svgGroup.children.forEach((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material as THREE.MeshBasicMaterial;
+          const colorHex = material.color.getHexString();
+          
+          if (!colorGroups.has(colorHex)) {
+            colorGroups.set(colorHex, new THREE.Group());
+          }
+          
+          // Clone the mesh for the color group
+          const clonedMesh = child.clone();
+          colorGroups.get(colorHex)!.add(clonedMesh);
+        }
+      });
+      
+      // Export each color group as separate STL
+      for (const [colorHex, group] of colorGroups.entries()) {
+        if (group.children.length > 0) {
+          const stlContent = exporter.parse(group);
+          files.push({
+            filename: `layer-${colorHex}.stl`,
+            content: stlContent,
+            color: colorHex
+          });
+        }
+      }
     }
+
+    // Create color info for response
+    const colors = Array.from(result.byColor.entries()).map(([color, meshes]) => ({
+      color,
+      depth: colorDepths[color] || 2.0,
+      pathCount: meshes.length
+    }));
 
     res.status(200).json({
       success: true,
       data: {
         type: exportType,
         files,
-        colors: colorLayers
+        colors
       }
     });
 

@@ -1,18 +1,23 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { ClientSVGTo3D } from '@/lib/clientSvgTo3D';
+import { renderSVG } from '@/lib/clientSvgTo3D';
 import { Button } from './ui/button';
 
 interface STLPreviewProps {
   svgContent: string;
   colorDepths: Record<string, number>;
   className?: string;
+  qualitySettings?: {
+    curveSegments: number;
+    scaleFactor: number;
+  };
 }
 
 export const STLPreview: React.FC<STLPreviewProps> = ({
   svgContent,
   colorDepths,
-  className = ''
+  className = '',
+  qualitySettings = { curveSegments: 8, scaleFactor: 2.0 }
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<THREE.Scene | null>(null);
@@ -30,7 +35,7 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
     const boundingBox = new THREE.Box3().setFromObject(extrusions);
     const center = boundingBox.getCenter(new THREE.Vector3());
     const size = boundingBox.getSize(new THREE.Vector3());
-    const offset = 1.5; // Increased from 0.5 to 1.5 for better zoom level
+    const offset = 0.8; // Balanced zoom - between 0.5 (too close) and 1.5 (too far)
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = camera.fov * (Math.PI / 180);
     const cameraZ = Math.abs((maxDim / 4) * Math.tan(fov * 2)) * offset;
@@ -98,9 +103,8 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
       newControls.autoRotateSpeed = 2.0;
       setControls(newControls);
 
-      // Load SVG using the new simplified approach (like working example)
-      const converter = new ClientSVGTo3D();
-      const result = converter.renderSVG(svgContent);
+      // Load SVG using the new simplified approach with quality settings
+      const result = renderSVG(svgContent, colorDepths, qualitySettings);
       
       // Clear scene and add new meshes
       while (newScene.children.length > 2) { // Keep lights
@@ -147,7 +151,7 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
       }
       newRenderer.dispose();
     };
-  }, [svgContent]);
+  }, [svgContent, colorDepths, qualitySettings]);
 
   // Update depths when colorDepths change (using the new update function)
   useEffect(() => {

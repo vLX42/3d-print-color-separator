@@ -82,8 +82,8 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
   }
 }
 
-export function exportMultiColorSTL(svgContent: string, colorDepths: ColorDepth = {}, qualitySettings: STLQualitySettings = {}): Buffer {
-  const { svgGroup, byColor } = renderSVG(svgContent, colorDepths, qualitySettings);
+export function exportMultiColorSTL(svgContent: string, colorDepths: ColorDepth = {}): Buffer {
+  const { svgGroup, byColor } = renderSVG(svgContent, colorDepths);
   const exporter = new STLExporter();
   
   // Export all geometries combined
@@ -102,8 +102,8 @@ export function exportMultiColorSTL(svgContent: string, colorDepths: ColorDepth 
   return Buffer.from(stlString);
 }
 
-export async function exportSeparateSTLs(svgContent: string, colorDepths: ColorDepth = {}, qualitySettings: STLQualitySettings = {}): Promise<Buffer> {
-  const { svgGroup, byColor } = renderSVG(svgContent, colorDepths, qualitySettings);
+export async function exportSeparateSTLs(svgContent: string, colorDepths: ColorDepth = {}): Promise<Buffer> {
+  const { svgGroup, byColor } = renderSVG(svgContent, colorDepths);
   const exporter = new STLExporter();
   const zip = new JSZip();
 

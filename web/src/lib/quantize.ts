@@ -11,7 +11,29 @@ export const quantize = (image: Buffer, colorCount: number): Promise<number[][]>
 
       const width = pixels.shape[0];
       const height = pixels.shape[1];
-      const inPointContainer = utils.PointContainer.fromUint8Array(pixels.data, width, height);
+      
+      // Filter out transparent pixels before quantization
+      const filteredPixels: number[] = [];
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        const r = pixels.data[i];
+        const g = pixels.data[i + 1];
+        const b = pixels.data[i + 2];
+        const a = pixels.data[i + 3];
+        
+        // Only include pixels that are not transparent (alpha > 0)
+        if (a > 0) {
+          filteredPixels.push(r, g, b, a);
+        }
+      }
+      
+      // Create a new point container with only non-transparent pixels
+      const filteredWidth = Math.ceil(Math.sqrt(filteredPixels.length / 4));
+      const filteredHeight = Math.ceil(filteredPixels.length / 4 / filteredWidth);
+      const inPointContainer = utils.PointContainer.fromUint8Array(
+        new Uint8Array(filteredPixels), 
+        filteredWidth, 
+        filteredHeight
+      );
 
       const palette = await buildPalette([inPointContainer], {
         colors: colorCount,
