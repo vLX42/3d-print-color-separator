@@ -1,5 +1,5 @@
 import Head from "next/head";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,21 +40,124 @@ export default function Home() {
   const [colorDepths, setColorDepths] = useState<Record<string, number>>({});
   const [isConvertingSTL, setIsConvertingSTL] = useState(false);
   const [stlProgress, setStlProgress] = useState(0);
+  
+  // STL quality settings
+  const [stlQuality, setStlQuality] = useState({
+    curveSegments: 8,
+    scaleFactor: 2.0  // Changed from 1.0 to 2.0 for even better visibility
+  });
+  
+  // Debounced quality settings for preview (to avoid constant re-rendering)
+  const [debouncedStlQuality, setDebouncedStlQuality] = useState({
+    curveSegments: 8,
+    scaleFactor: 2.0  // Changed from 1.0 to 2.0 for even better visibility
+  });
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Debounce quality settings changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedStlQuality(stlQuality);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [stlQuality]);
+
+  // Convert different file types to PNG format
+  const convertToPng = async (file: File): Promise<{ imageFile: File; image: HTMLImageElement }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      
+      img.onload = () => {
+        // Create canvas to convert to PNG
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // For JPG files, add white background to preserve colors
+        if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        ctx.drawImage(img, 0, 0);
+        
+        // Convert canvas to PNG blob
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Could not convert to PNG'));
+            return;
+          }
+          
+          // Create new File object with PNG format
+          const pngFile = new File([blob], `converted_${file.name.split('.')[0]}.png`, {
+            type: 'image/png'
+          });
+          
+          resolve({ imageFile: pngFile, image: img });
+        }, 'image/png');
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Could not load image'));
+      };
+      
+      // Handle different file types
+      if (file.type === 'image/svg+xml') {
+        // For SVG, read as text and create data URL
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const svgText = e.target?.result as string;
+          const blob = new Blob([svgText], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
+          img.src = url;
+        };
+        reader.readAsText(file);
+      } else {
+        // For PNG/JPG, read as data URL
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          img.src = e.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          setImage(img);
-          setImageFile(file);
+      
+      try {
+        if (file.type === 'image/png') {
+          // PNG files can be used directly
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              setImage(img);
+              setImageFile(file);
+              setProgress(10);
+            };
+            img.src = e.target?.result as string;
+          };
+          reader.readAsDataURL(file);
+        } else {
+          // Convert other formats to PNG
+          const { imageFile, image } = await convertToPng(file);
+          setImage(image);
+          setImageFile(imageFile);
           setProgress(10);
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+        }
+      } catch (error) {
+        console.error('Error processing file:', error);
+        alert('Error processing file. Please try a different image.');
+      }
     }
   };
 
@@ -123,8 +226,6 @@ export default function Home() {
         const hexColor = `#${color.map((c: number) => c.toString(16).padStart(2, '0')).join('')}`;
         traceFormData.append("color", hexColor);
         
-        console.log(`Tracing SVG ${index} with color ${hexColor}, blob size: ${blob.size}`);
-        
         const svgResponse = await fetch("/api/trace", {
           method: "POST",
           body: traceFormData,
@@ -137,10 +238,8 @@ export default function Home() {
         }
         
         const svgResult = await svgResponse.json();
-        console.log(`SVG ${index} result:`, svgResult);
         
         if (!svgResult.svg || svgResult.svg.trim() === "") {
-          console.warn(`Empty SVG result for ${index}`);
           return "";
         }
         
@@ -207,8 +306,9 @@ export default function Home() {
         },
         body: JSON.stringify({
           svgContent: joinedSvg,
-          depths: colorDepths,
-          exportType
+          colorDepths: colorDepths, // Fixed: use colorDepths instead of depths
+          exportType,
+          qualitySettings: stlQuality
         }),
       });
 
@@ -219,30 +319,28 @@ export default function Home() {
         throw new Error(`STL conversion failed: ${errorText}`);
       }
 
-      const result = await response.json();
+      // Handle binary response instead of JSON
+      const blob = await response.blob();
       setStlProgress(90);
 
-      if (!result.success) {
-        throw new Error(result.error || 'STL conversion failed');
-      }
-
-      // Download the files
-      if (result.data.type === 'combined') {
-        // Single STL file
-        const stlContent = result.data.files[0].content;
-        const blob = new Blob([stlContent], { type: 'application/octet-stream' });
-        saveAs(blob, result.data.files[0].filename);
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Set filename based on export type
+      if (exportType === 'separate') {
+        a.download = 'stl-files.zip';
       } else {
-        // Multiple STL files - create ZIP
-        const zip = new JSZip();
-        result.data.files.forEach((file: any) => {
-          zip.file(file.filename, file.content);
-        });
-        
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        saveAs(zipBlob, 'color-layers.zip');
+        a.download = 'combined.stl';
       }
-
+      
+      // Trigger download
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
       setStlProgress(100);
       
       // Reset progress after a moment
@@ -286,20 +384,6 @@ export default function Home() {
               Transform your AI-generated logos and designs into multi-color 3D printable files. 
               Automatically separate colors into individual layers perfect for multi-material 3D printing.
             </p>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
-              <p className="text-blue-800 text-sm">
-                <strong>🎯 3D Printing Ready:</strong> Output is fully compatible with{" "}
-                <a 
-                  href="https://svg2solid.rknt.de/" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 underline font-medium"
-                >
-                  svg2solid.rknt.de
-                </a>
-                {" "}for converting to 3D models with proper layer separation
-              </p>
-            </div>
           </header>
 
           <div className="mb-8">
@@ -333,12 +417,12 @@ export default function Home() {
                   <Input 
                     id="image-upload" 
                     type="file" 
-                    accept="image/png" 
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml" 
                     onChange={handleFileChange}
                     className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors p-4 h-auto"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Upload PNG images with clear color separation for best results
+                    Upload PNG, JPG, or SVG images with clear color separation for best results
                   </p>
                 </div>
                 
@@ -433,8 +517,8 @@ export default function Home() {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <h4 className="font-medium text-blue-800 mb-2">Next Steps for 3D Printing:</h4>
                       <ol className="text-sm text-blue-700 space-y-1">
-                        <li>1. Upload the SVG to <a href="https://svg2solid.rknt.de/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">svg2solid.rknt.de</a></li>
-                        <li>2. Convert to 3MF format with layer separation</li>
+                        <li>1. Use a tool like <a href="https://svg2solid.rknt.de/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">svg2solid.rknt.de</a> to convert SVG to 3D</li>
+                        <li>2. Export as 3MF format with layer separation</li>
                         <li>3. Import into your slicer (PrusaSlicer, Cura, etc.)</li>
                         <li>4. Assign different filaments to each color layer</li>
                       </ol>
@@ -626,7 +710,83 @@ export default function Home() {
             </div>
           )}
           
-          {/* STL Conversion Section */}
+          {/* STL Conversion Section - Skeleton when no content */}
+          {!joinedSvg && (
+            <div className="mt-8">
+              <Card className="shadow-lg border-0 bg-gradient-to-br from-gray-50 to-gray-100">
+                <CardHeader className="bg-gradient-to-r from-gray-400 to-gray-500 text-white rounded-t-lg">
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-lg opacity-50">🔷</span>
+                    </div>
+                    3D Print Ready (Beta)
+                    <span className="text-xs bg-white/20 px-2 py-1 rounded-full ml-auto opacity-50">COMING SOON</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="space-y-6 opacity-50">
+                    <div>
+                      <h3 className="font-semibold text-gray-600 mb-3">🎛️ Layer Depths</h3>
+                      <p className="text-sm text-gray-500 mb-4">
+                        Upload an image to access 3D model generation and layer depth controls.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Skeleton depth controls */}
+                        {[1, 2, 3, 4].map((index) => (
+                          <div key={index} className="bg-gray-100 rounded-lg p-4 border-2 border-gray-200">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-6 h-6 bg-gray-300 rounded animate-pulse"></div>
+                              <div className="h-4 bg-gray-300 rounded w-20 animate-pulse"></div>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-xs text-gray-400">
+                                <span>Depth (mm)</span>
+                                <div className="h-3 bg-gray-300 rounded w-8 animate-pulse"></div>
+                              </div>
+                              <div className="h-6 bg-gray-300 rounded animate-pulse"></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className="font-semibold text-gray-600 mb-3">⚙️ Quality Settings</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="h-4 bg-gray-300 rounded w-32 animate-pulse"></div>
+                          <div className="h-6 bg-gray-300 rounded animate-pulse"></div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="h-4 bg-gray-300 rounded w-24 animate-pulse"></div>
+                          <div className="h-6 bg-gray-300 rounded animate-pulse"></div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className="font-semibold text-gray-600 mb-3">👁️ 3D Preview</h3>
+                      <div className="w-full h-96 rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center">
+                        <div className="text-center text-gray-400">
+                          <div className="text-6xl mb-4 opacity-30">📦</div>
+                          <div className="text-lg font-medium mb-2">3D Preview</div>
+                          <div className="text-sm">Upload and convert an image to see your 3D model</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-center">
+                      <div className="bg-gray-300 text-gray-500 px-6 py-3 rounded-lg cursor-not-allowed">
+                        📦 Upload an image first
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          
+          {/* STL Conversion Section - Active when content available */}
           {joinedSvg && (
             <div className="mt-8">
               <Card className="shadow-lg border-0 bg-gradient-to-br from-green-50 to-emerald-50">
@@ -677,6 +837,65 @@ export default function Home() {
                       </div>
                     </div>
                     
+                    {/* STL Quality Settings */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="font-semibold text-gray-800">⚙️ Quality Settings</h3>
+                        {JSON.stringify(stlQuality) !== JSON.stringify(debouncedStlQuality) && (
+                          <div className="flex items-center gap-1 text-xs text-blue-600">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                            Updating...
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Curve Quality: {stlQuality.curveSegments} segments
+                          </label>
+                          <input
+                            type="range"
+                            min="2"
+                            max="64"
+                            value={stlQuality.curveSegments}
+                            onChange={(e) => setStlQuality(prev => ({
+                              ...prev,
+                              curveSegments: parseInt(e.target.value)
+                            }))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>Fast (2)</span>
+                            <span>Balanced (8)</span>
+                            <span>Ultra High (64)</span>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Model Scale: {(stlQuality.scaleFactor * 100).toFixed(0)}%
+                          </label>
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="1.0"
+                            step="0.05"
+                            value={stlQuality.scaleFactor}
+                            onChange={(e) => setStlQuality(prev => ({
+                              ...prev,
+                              scaleFactor: parseFloat(e.target.value)
+                            }))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>Small (10%)</span>
+                            <span>Normal (25%)</span>
+                            <span>Large (100%)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
                     {/* 3D Preview */}
                     <div>
                       <h3 className="font-semibold text-gray-800 mb-3">👁️ 3D Preview</h3>
@@ -690,21 +909,13 @@ export default function Home() {
                       />
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Button
-                        onClick={() => convertToSTL('combined')}
-                        disabled={isConvertingSTL}
-                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-                      >
-                        {isConvertingSTL ? 'Converting...' : '📦 Download Single STL'}
-                      </Button>
+                    <div className="flex justify-center">
                       <Button
                         onClick={() => convertToSTL('separate')}
                         disabled={isConvertingSTL}
-                        variant="outline"
-                        className="flex-1"
+                        className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
                       >
-                        {isConvertingSTL ? 'Converting...' : '📁 Download Layer Files'}
+                        {isConvertingSTL ? 'Converting...' : '� Download STL Layer Files'}
                       </Button>
                     </div>
                     
@@ -721,10 +932,10 @@ export default function Home() {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <h4 className="font-semibold text-blue-800 mb-2">💡 3D Printing Tips</h4>
                       <ul className="text-sm text-blue-700 space-y-1">
-                        <li>• <strong>Single STL:</strong> Creates one multi-layer model for sequential printing</li>
-                        <li>• <strong>Layer Files:</strong> Separate STL files for manual layer assembly</li>
+                        <li>• <strong>Layer Files:</strong> Separate STL files for each color - perfect for multi-material printers</li>
                         <li>• <strong>Depth Guidelines:</strong> 0.5-2mm for thin details, 3-5mm for prominent features</li>
                         <li>• <strong>Print Settings:</strong> Use 0.2mm layer height for best detail resolution</li>
+                        <li>• <strong>Assembly:</strong> Import each color layer separately in your slicer for proper material assignment</li>
                       </ul>
                     </div>
                   </div>
@@ -744,14 +955,14 @@ export default function Home() {
                   </p>
                   <ul className="text-xs text-gray-500 space-y-1">
                     <li>• Compatible with PrusaSlicer, Cura, and other major slicers</li>
-                    <li>• Works with Prusa MMU, Bambu AMS, and manual filament changes</li>
+                    <li>• Works with Qidi Box, Prusa MMU, Bambu AMS, and manual filament changes</li>
                     <li>• Optimized for flat designs and text-based logos</li>
                   </ul>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-800 mb-3">🔧 Workflow Integration</h3>
+                  <h3 className="font-semibold text-gray-800 mb-3">🔧 Direct STL Workflow</h3>
                   <p className="text-sm text-gray-600 mb-2">
-                    Seamlessly integrates with the 3D printing toolchain for professional results.
+                    Complete 3D printing workflow with direct STL download.
                   </p>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-xs text-gray-600">
@@ -764,19 +975,39 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      <span>Convert to 3D model via svg2solid.rknt.de</span>
+                      <span>Download STL files for each color layer</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
-                      <span>Slice and print with multiple filaments</span>
+                      <span>Import into slicer and assign filament colors</span>
                     </div>
                   </div>
                 </div>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-200 text-center">
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 mb-2">
                   Made for makers, designers, and 3D printing enthusiasts. 
                   Transform any 2D design into beautiful multi-color 3D prints.
+                </p>
+                <p className="text-xs text-gray-400">
+                  <a 
+                    href="https://github.com/vLX42/3d-print-color-separator" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="hover:text-gray-600 underline transition-colors"
+                  >
+                    View Source Code on GitHub
+                  </a>
+                  {" • "}
+                  Inspired by{" "}
+                  <a 
+                    href="https://svg2solid.rknt.de/" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="hover:text-gray-600 underline transition-colors"
+                  >
+                    svg2solid.rknt.de
+                  </a>
                 </p>
               </div>
             </div>
