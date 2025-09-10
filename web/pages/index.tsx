@@ -857,8 +857,7 @@ export default function Home() {
                     <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                       <span className="text-lg opacity-50">🔷</span>
                     </div>
-                    3D Print Ready (Beta)
-              
+                    3D Print Ready
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
@@ -950,10 +949,7 @@ export default function Home() {
                     <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                       <span className="text-lg">🔷</span>
                     </div>
-                    3D Print Ready (Beta)
-                    <span className="text-xs bg-white/20 px-2 py-1 rounded-full ml-auto">
-                      NEW
-                    </span>
+                    3D Print Ready
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
