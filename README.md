@@ -1,136 +1,166 @@
-# 🎨 3D Print Color Separator
+# 3D Print Color Separator
 
-Transform your AI-generated logos and designs into multi-color 3D printable files with automatic color separation and layer generation.
+🎨 **Transform any image into multi-color 3D printable files!**
 
-🌐 **Live Demo**: [3dcolors.vlx.dk](https://3dcolors.vlx.dk)
+A powerful web application that automatically converts images into separate STL files for multi-material 3D printing. Perfect for creating colorful logos, signs, and decorative objects with your 3D printer.
 
-![3D Print Color Separator](https://img.shields.io/badge/3D%20Printing-Multi--Color-blue?style=for-the-badge)
-![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=for-the-badge&logo=typescript)
+## ✨ Features
 
-## 🚀 Features
+### 🖼️ Image Processing
+- **Multi-format support**: Upload PNG, JPG, or SVG images
+- **Automatic color separation**: Intelligently separates your image into distinct color layers
+- **Transparency handling**: Properly handles transparent pixels in PNG images
+- **Quantization control**: Adjust the number of colors (2-16) for optimal printing
 
-- **🎯 AI Logo Compatible**: Works perfectly with AI-generated designs and logos
-- **🌈 Automatic Color Separation**: Intelligently separates colors into individual 3D printable layers
-- **🔧 svg2solid Integration**: Direct compatibility with [svg2solid.rknt.de](https://svg2solid.rknt.de/) for 3D model conversion
-- **🖨️ Multi-Material Ready**: Perfect for Prusa MMU, Bambu AMS, and manual filament changes
-- **⚡ Real-time Processing**: Fast conversion with live progress tracking
-- **📱 Responsive Design**: Beautiful interface that works on desktop and mobile
+### 🔷 3D STL Conversion
+- **Direct STL export**: Generate STL files for each color layer
+- **Interactive 3D preview**: See your model before printing with Three.js rendering
+- **Adjustable layer depths**: Set custom thickness (0.5-10mm) for each color
+- **Quality settings**: Control curve segments and model scaling
+- **Gap elimination**: Advanced overlap system prevents gaps between color layers
+- **Batch download**: Get all STL files in a convenient ZIP package
 
-## 🛠️ Perfect For
+### 🖨️ 3D Printing Ready
+- **Multi-material support**: Compatible with Prusa MMU, Bambu AMS, and manual filament changes
+- **Slicer compatibility**: Works with PrusaSlicer, Cura, and other major slicing software
+- **Optimized output**: STL files designed for reliable multi-color printing
+- **Print guidelines**: Built-in tips for layer heights and material assignment
 
-- **Multi-color 3D printing** of logos and signs
-- **AI-generated artwork** conversion to 3D models
-- **Corporate branding** in physical form
-- **Custom signage** with multiple filament colors
-- **Educational projects** and prototyping
+## 🚀 Live Demo
 
-## 🎮 How It Works
+Try it out at: **https://3dcolors.vlx.dk**
 
-1. **Upload** your PNG image (AI-generated logos work great!)
-2. **Adjust** the number of colors (2-16, default: 4 for optimal 3D printing)
-3. **Convert** with one click - automatic color separation and vectorization
-4. **Download** your 3D print-ready SVG file
-5. **Convert to 3D** using [svg2solid.rknt.de](https://svg2solid.rknt.de/)
-6. **Slice and Print** with your favorite multi-material setup
+## 🛠️ How It Works
 
-## 🏗️ 3D Printing Workflow
+1. **Upload**: Drop your image (PNG, JPG, or SVG)
+2. **Configure**: Set the number of colors for separation
+3. **Convert**: Automatic color quantization and SVG vectorization
+4. **Customize**: Adjust layer depths and quality settings
+5. **Preview**: Interactive 3D preview of your model
+6. **Download**: Get STL files ready for your 3D printer
 
-```mermaid
-graph LR
-    A[AI Logo/Design] --> B[Upload PNG]
-    B --> C[Color Separation]
-    C --> D[SVG Generation]
-    D --> E[svg2solid.rknt.de]
-    E --> F[3MF File]
-    F --> G[Slicer Software]
-    G --> H[Multi-Color 3D Print]
-```
+## 🎯 Perfect For
 
-## 🔧 Compatible With
+- **Multi-material printers**: Prusa MMU, Bambu AMS, manual filament changes
+- **Logo printing**: Company logos, gaming emblems, brand designs
+- **Decorative objects**: Signs, plaques, artistic pieces
+- **AI-generated art**: Bring your AI creations into the physical world
+- **Educational projects**: Learning about color separation and 3D printing
 
-- **Printers**: Prusa MMU, Bambu Lab AMS, Manual filament change printers
-- **Slicers**: PrusaSlicer, Bambu Studio, Cura, SuperSlicer
-- **Conversion**: svg2solid.rknt.de (automatic 3D model generation)
-- **Formats**: SVG → 3MF → G-code
+## 🔧 Technical Stack
 
-## 🚀 Getting Started
+- **Frontend**: Next.js 15.5.2 with React and TypeScript
+- **3D Rendering**: Three.js with STLExporter
+- **Image Processing**: Canvas API with custom quantization algorithms
+- **Vectorization**: Potrace for bitmap to SVG conversion
+- **File Handling**: JSZip for multi-file downloads
+- **Styling**: Tailwind CSS with custom UI components
+
+## 🏃‍♂️ Local Development
 
 ### Prerequisites
 - Node.js 18+ 
-- pnpm (recommended) or npm
+- npm, yarn, or pnpm
 
-### Installation
-
+### Setup
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/3d-print-color-separator.git
-
-# Navigate to the web directory
+git clone https://github.com/vLX42/3d-print-color-separator.git
 cd 3d-print-color-separator/web
 
 # Install dependencies
+npm install
+# or
+yarn install
+# or
 pnpm install
 
-# Start development server
+# Run development server
+npm run dev
+# or
+yarn dev
+# or
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to start separating colors for 3D printing!
+Open [http://localhost:3000](http://localhost:3000) to see the application.
 
-## 🏗️ Built With
+## 📁 Project Structure
 
-- **[Next.js 15](https://nextjs.org/)** - React framework with TypeScript
-- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework
-- **[shadcn/ui](https://ui.shadcn.com/)** - Beautiful, accessible components
-- **[image-q](https://github.com/ibezkrovnyi/image-quantization)** - Advanced color quantization
-- **[potrace](https://www.npmjs.com/package/potrace)** - SVG tracing and vectorization
+```
+web/
+├── pages/
+│   ├── index.tsx           # Main application page
+│   └── api/
+│       ├── convert-stl.ts  # STL conversion endpoint
+│       ├── quantize.ts     # Color quantization API
+│       └── trace.ts        # SVG tracing API
+├── src/
+│   ├── components/
+│   │   ├── STLPreview.tsx  # 3D model preview component
+│   │   └── ui/             # Reusable UI components
+│   └── lib/
+│       ├── svgTo3D.ts      # SVG to 3D conversion logic
+│       ├── quantize.ts     # Color quantization algorithms
+│       └── separateColors.ts # Color layer separation
+└── public/                 # Static assets
+```
 
-## 📋 API Endpoints
+## 🎛️ Configuration Options
 
-- `POST /api/quantize` - Extract color palette from uploaded image
-- `POST /api/trace` - Convert separated color layers to SVG paths
+### Quality Settings
+- **Curve Segments**: 2-64 segments (affects model smoothness)
+- **Scale Factor**: 10%-100% (controls final model size)
+- **Overlap Amount**: 0.5mm overlap for gap-free printing
 
-## 🎨 Example Use Cases
+### Layer Depth Guidelines
+- **0.5-2mm**: Thin details, text, fine features
+- **3-5mm**: Prominent elements, logos, main features
+- **6-10mm**: Raised elements, 3D effects
 
-- **Company Logos**: Turn your brand logo into a multi-color 3D sign
-- **AI Art**: Convert AI-generated artwork into physical 3D objects  
-- **Signage**: Create professional multi-color signs and placards
-- **Prototyping**: Rapid prototyping of colorful designs and concepts
-- **Education**: Teaching color theory and 3D printing concepts
+## 🖨️ 3D Printing Tips
+
+### Recommended Settings
+- **Layer Height**: 0.2mm for best detail resolution
+- **Infill**: 15-20% for decorative items, 100% for mechanical parts
+- **Support**: Usually not needed for flat designs
+
+### Multi-Material Workflow
+1. Import each STL file separately in your slicer
+2. Assign different materials/colors to each file
+3. Ensure proper layer alignment in your slicer
+4. Use same print settings for all color layers
+
+### Compatible Printers
+- **Prusa MMU**: Direct multi-material printing
+- **Bambu AMS**: Automatic material changing
+- **Manual changes**: Pause and resume for filament swaps
+- **Single color**: Print each layer separately and assemble
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions! Whether it's:
+- Bug reports and feature requests
+- Code improvements and optimizations
+- Documentation updates
+- Testing with different printers and slicers
 
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## 📝 License
 
-## 🤖 Development Notes
-
-This project was built using **spec-driven AI development** - essentially describing what I wanted and letting AI implement it. The entire application was created in 2-3 hours of non-coding time, which is pretty amazing.
-
-**Technical Choices**: The code uses some older concepts like Next.js pages router and Tailwind CSS v3. Personally, I would have made different architectural decisions, but the AI chose a stable, well-documented approach that just works. Of course, the AI didn't know better since its knowledge will always be a bit behind current best practices.
-
-**The Process**: Started with a simple spec, iteratively refined features, and ended up with a fully functional tool. It's fascinating how much can be accomplished without writing code directly.
-
-**Shout out**: Big thanks to the developers of [Spec Kit](https://github.com/github/spec-kit) for pioneering spec-driven development approaches!
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is open source. Check the LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
-- **[svg2solid.rknt.de](https://svg2solid.rknt.de/)** - For excellent SVG to 3D conversion
-- **3D Printing Community** - For inspiration and feedback
-- **AI Art Community** - For creating amazing designs to convert
+- Inspired by [svg2solid.rknt.de](https://svg2solid.rknt.de/)
+- Built with amazing open-source libraries
+- Thanks to the 3D printing community for feedback and testing
+
+## 🔗 Links
+
+- **Live Application**: https://3dcolors.vlx.dk
+- **GitHub Repository**: https://github.com/vLX42/3d-print-color-separator
+- **Issues & Support**: [GitHub Issues](https://github.com/vLX42/3d-print-color-separator/issues)
 
 ---
 
-**Made with ❤️ for makers, designers, and 3D printing enthusiasts**
-
-Transform any 2D design into beautiful multi-color 3D prints! 🎨🖨️
+**Made for makers, designers, and 3D printing enthusiasts. Transform any 2D design into beautiful multi-color 3D prints! 🎨➡️🖨️**
