@@ -12,6 +12,7 @@ import { separateColors } from "@/lib/separateColors";
 import { joinSvg } from "@/lib/joinSvg";
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { STLPreview } from '@/components/STLPreview';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -674,6 +675,19 @@ export default function Home() {
                           );
                         })}
                       </div>
+                    </div>
+                    
+                    {/* 3D Preview */}
+                    <div>
+                      <h3 className="font-semibold text-gray-800 mb-3">👁️ 3D Preview</h3>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Interactive preview of your 3D model. Drag to rotate, scroll to zoom.
+                      </p>
+                      <STLPreview 
+                        svgContent={joinedSvg}
+                        colorDepths={colorDepths}
+                        className="mb-4"
+                      />
                     </div>
                     
                     <div className="flex flex-col sm:flex-row gap-3">
