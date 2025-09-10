@@ -1,17 +1,12 @@
 import * as THREE from 'three';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 import { JSDOM } from 'jsdom';
+import { parseSVG } from 'svg-path-parser';
 
 interface ColorLayer {
   color: string;
   paths: string[];
   depth: number;
-}
-
-interface SVGShape {
-  path: string;
-  color: string;
-  mesh?: THREE.Mesh;
 }
 
 export class SVGTo3D {
@@ -52,69 +47,177 @@ export class SVGTo3D {
     });
   }
 
-  // Convert SVG path to Three.js shape
+  // Convert SVG path to Three.js Shape using the SVG path parser
   private pathToShape(pathData: string): THREE.Shape {
     const shape = new THREE.Shape();
     
-    // Basic SVG path parsing - simplified for common cases
-    const commands = pathData.match(/[MLHVCSQTAZ][^MLHVCSQTAZ]*/gi) || [];
-    
-    commands.forEach((command) => {
-      const type = command[0].toUpperCase();
-      const coords = command.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
-      
-      switch (type) {
-        case 'M': // Move to
-          if (coords.length >= 2) {
-            shape.moveTo(coords[0], -coords[1]); // Flip Y axis
-          }
-          break;
-        case 'L': // Line to
-          if (coords.length >= 2) {
-            shape.lineTo(coords[0], -coords[1]);
-          }
-          break;
-        case 'H': // Horizontal line
-          if (coords.length >= 1) {
-            const currentPoint = shape.currentPoint;
-            shape.lineTo(coords[0], currentPoint.y);
-          }
-          break;
-        case 'V': // Vertical line
-          if (coords.length >= 1) {
-            const currentPoint = shape.currentPoint;
-            shape.lineTo(currentPoint.x, -coords[0]);
-          }
-          break;
-        case 'Z': // Close path
-          shape.closePath();
-          break;
-        // Add more path commands as needed
-      }
-    });
-    
-    return shape;
+    try {
+      const commands = parseSVG(pathData);
+      let currentX = 0;
+      let currentY = 0;
+      let startX = 0;
+      let startY = 0;
+
+      commands.forEach((command: any) => {
+        switch (command.code) {
+          case 'M': // Move to (absolute)
+            currentX = command.x || 0;
+            currentY = -(command.y || 0); // Flip Y axis for SVG coordinate system
+            startX = currentX;
+            startY = currentY;
+            shape.moveTo(currentX, currentY);
+            break;
+            
+          case 'm': // Move to (relative)
+            currentX += command.x || 0;
+            currentY -= command.y || 0;
+            startX = currentX;
+            startY = currentY;
+            shape.moveTo(currentX, currentY);
+            break;
+            
+          case 'L': // Line to (absolute)
+            currentX = command.x || 0;
+            currentY = -(command.y || 0);
+            shape.lineTo(currentX, currentY);
+            break;
+            
+          case 'l': // Line to (relative)
+            currentX += command.x || 0;
+            currentY -= command.y || 0;
+            shape.lineTo(currentX, currentY);
+            break;
+            
+          case 'H': // Horizontal line (absolute)
+            if (command.x !== undefined) {
+              currentX = command.x;
+              shape.lineTo(currentX, currentY);
+            }
+            break;
+            
+          case 'h': // Horizontal line (relative)
+            if (command.x !== undefined) {
+              currentX += command.x;
+              shape.lineTo(currentX, currentY);
+            }
+            break;
+            
+          case 'V': // Vertical line (absolute)
+            if (command.y !== undefined) {
+              currentY = -command.y;
+              shape.lineTo(currentX, currentY);
+            }
+            break;
+            
+          case 'v': // Vertical line (relative)
+            if (command.y !== undefined) {
+              currentY -= command.y;
+              shape.lineTo(currentX, currentY);
+            }
+            break;
+            
+          case 'C': // Cubic Bezier (absolute)
+            if (command.x && command.y && command.x1 !== undefined && command.y1 !== undefined && command.x2 !== undefined && command.y2 !== undefined) {
+              const cp1x = command.x1;
+              const cp1y = -command.y1;
+              const cp2x = command.x2;
+              const cp2y = -command.y2;
+              const x = command.x;
+              const y = -command.y;
+              
+              shape.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+              currentX = x;
+              currentY = y;
+            }
+            break;
+            
+          case 'c': // Cubic Bezier (relative)
+            if (command.x && command.y && command.x1 !== undefined && command.y1 !== undefined && command.x2 !== undefined && command.y2 !== undefined) {
+              const cp1x = currentX + command.x1;
+              const cp1y = currentY - command.y1;
+              const cp2x = currentX + command.x2;
+              const cp2y = currentY - command.y2;
+              const x = currentX + command.x;
+              const y = currentY - command.y;
+              
+              shape.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+              currentX = x;
+              currentY = y;
+            }
+            break;
+            
+          case 'Q': // Quadratic Bezier (absolute)
+            if (command.x && command.y && command.x1 !== undefined && command.y1 !== undefined) {
+              const cpx = command.x1;
+              const cpy = -command.y1;
+              const x = command.x;
+              const y = -command.y;
+              
+              shape.quadraticCurveTo(cpx, cpy, x, y);
+              currentX = x;
+              currentY = y;
+            }
+            break;
+            
+          case 'q': // Quadratic Bezier (relative)
+            if (command.x && command.y && command.x1 !== undefined && command.y1 !== undefined) {
+              const cpx = currentX + command.x1;
+              const cpy = currentY - command.y1;
+              const x = currentX + command.x;
+              const y = currentY - command.y;
+              
+              shape.quadraticCurveTo(cpx, cpy, x, y);
+              currentX = x;
+              currentY = y;
+            }
+            break;
+            
+          case 'Z': // Close path
+          case 'z':
+            shape.closePath();
+            break;
+        }
+      });
+
+      return shape;
+    } catch (error) {
+      console.warn('Failed to parse SVG path:', pathData, error);
+      // Fallback: create a simple rectangle if parsing fails
+      const fallbackShape = new THREE.Shape();
+      fallbackShape.moveTo(0, 0);
+      fallbackShape.lineTo(10, 0);
+      fallbackShape.lineTo(10, 10);
+      fallbackShape.lineTo(0, 10);
+      fallbackShape.closePath();
+      return fallbackShape;
+    }
   }
 
-  // Generate 3D meshes from color layers
+  // Generate 3D meshes from color layers using ExtrudeGeometry
   generate3D(): Map<string, THREE.Mesh[]> {
     const meshesByColor = new Map<string, THREE.Mesh[]>();
     
     this.colorLayers.forEach((layer, colorKey) => {
       const meshes: THREE.Mesh[] = [];
       
-      layer.paths.forEach((pathData) => {
+      layer.paths.forEach((pathData, pathIndex) => {
         try {
           const shape = this.pathToShape(pathData);
           
-          // Create extruded geometry
+          // Create extruded geometry with proper settings for STL export
           const extrudeSettings = {
             depth: layer.depth,
             bevelEnabled: false,
-            steps: 1
+            steps: 1,
+            curveSegments: 12 // Smooth curves
           };
           
           const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+          
+          // Ensure proper geometry
+          geometry.computeBoundingBox();
+          geometry.computeBoundingSphere();
+          geometry.computeVertexNormals();
           
           // Create material
           const material = new THREE.MeshBasicMaterial({
@@ -124,11 +227,15 @@ export class SVGTo3D {
           
           // Create mesh
           const mesh = new THREE.Mesh(geometry, material);
-          mesh.userData = { color: colorKey, depth: layer.depth };
+          mesh.userData = { 
+            color: colorKey, 
+            depth: layer.depth, 
+            pathIndex 
+          };
           
           meshes.push(mesh);
         } catch (error) {
-          console.warn('Failed to process path:', pathData, error);
+          console.warn(`Failed to process path ${pathIndex} for color ${colorKey}:`, error);
         }
       });
       
@@ -164,8 +271,8 @@ export class SVGTo3D {
         // Position mesh at current height
         clonedMesh.position.z = currentHeight;
         
-        // Rotate for proper STL orientation
-        clonedMesh.rotation.x = -Math.PI / 2;
+        // Ensure mesh world matrix is updated
+        clonedMesh.updateMatrixWorld(true);
         
         combinedScene.add(clonedMesh);
       });
@@ -177,9 +284,10 @@ export class SVGTo3D {
       }
     });
     
+    // Update scene world matrix
     combinedScene.updateMatrixWorld(true);
     
-    // Export as STL
+    // Export as STL with proper options
     return exporter.parse(combinedScene, { binary: false });
   }
 
@@ -194,11 +302,14 @@ export class SVGTo3D {
       
       meshes.forEach((mesh) => {
         const clonedMesh = mesh.clone();
-        clonedMesh.rotation.x = -Math.PI / 2; // Proper STL orientation
+        clonedMesh.updateMatrixWorld(true);
         colorScene.add(clonedMesh);
       });
       
+      // Update scene world matrix
       colorScene.updateMatrixWorld(true);
+      
+      // Export as STL
       const stlContent = exporter.parse(colorScene, { binary: false });
       stlFiles.set(color, stlContent);
     });
