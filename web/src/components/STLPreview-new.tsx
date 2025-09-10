@@ -28,26 +28,42 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
   const [isWireframe, setIsWireframe] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
 
-  // Fit camera function (like the working example)
+  // Fit camera function with proper scale calculation
   const fitCamera = (extrusions: THREE.Group) => {
     if (!camera || !controls) return;
     
     const boundingBox = new THREE.Box3().setFromObject(extrusions);
     const center = boundingBox.getCenter(new THREE.Vector3());
     const size = boundingBox.getSize(new THREE.Vector3());
-    const offset = 0.8; // Balanced zoom - between 0.5 (too close) and 1.5 (too far)
+    
+    // Calculate the maximum dimension of the model
     const maxDim = Math.max(size.x, size.y, size.z);
+    
+    // If the model is very small, use a reasonable minimum viewing distance
+    const effectiveSize = Math.max(maxDim, 10);
+    
+    // Calculate camera distance based on the field of view and model size
     const fov = camera.fov * (Math.PI / 180);
-    const cameraZ = Math.abs((maxDim / 4) * Math.tan(fov * 2)) * offset;
-    const minZ = boundingBox.min.z;
-    const cameraToFarEdge = minZ < 0 ? -minZ + cameraZ : cameraZ - minZ;
-
-    controls.target = center;
-    controls.maxDistance = cameraToFarEdge * 2;
-    controls.minDistance = cameraToFarEdge * 0.5;
+    const distance = (effectiveSize * 1.5) / Math.tan(fov / 2);
+    
+    // Position camera to look at the model from a good angle
+    const cameraPosition = new THREE.Vector3(
+      center.x + distance * 0.5,
+      center.y + distance * 0.5,
+      center.z + distance
+    );
+    
+    camera.position.copy(cameraPosition);
+    camera.lookAt(center);
+    
+    // Set up controls
+    controls.target.copy(center);
+    controls.maxDistance = distance * 3;
+    controls.minDistance = distance * 0.2;
     controls.saveState();
-    camera.position.z = cameraZ;
-    camera.far = cameraToFarEdge * 3;
+    
+    // Update camera far plane
+    camera.far = distance * 10;
     camera.updateProjectionMatrix();
   };
 
