@@ -12,7 +12,7 @@ import { separateColors } from "@/lib/separateColors";
 import { joinSvg } from "@/lib/joinSvg";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-import { STLPreview } from "@/components/STLPreview-new";
+import { STLPreview } from "@/components/STLPreview";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

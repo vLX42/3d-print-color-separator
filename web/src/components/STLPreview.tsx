@@ -1,28 +1,84 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { ClientSVGTo3D } from '@/lib/clientSvgTo3D';
+import { renderSVG } from '@/lib/clientSvgTo3D';
 import { Button } from './ui/button';
 
 interface STLPreviewProps {
   svgContent: string;
   colorDepths: Record<string, number>;
   className?: string;
+  qualitySettings?: {
+    curveSegments: number;
+    scaleFactor: number;
+    overlapAmount?: number;
+  };
 }
 
 export const STLPreview: React.FC<STLPreviewProps> = ({
   svgContent,
   colorDepths,
-  className = ''
+  className = '',
+  qualitySettings = { curveSegments: 8, scaleFactor: 2.0, overlapAmount: 0.1 }
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<THREE.Scene | null>(null);
   const [renderer, setRenderer] = useState<THREE.WebGLRenderer | null>(null);
   const [camera, setCamera] = useState<THREE.PerspectiveCamera | null>(null);
+  const [controls, setControls] = useState<any>(null);
+  const [renderResult, setRenderResult] = useState<any>(null);
   const [isWireframe, setIsWireframe] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
 
+  // Fit camera function with proper scale calculation
+  const fitCamera = (extrusions: THREE.Group) => {
+    if (!camera || !controls) return;
+    
+    const boundingBox = new THREE.Box3().setFromObject(extrusions);
+    const center = boundingBox.getCenter(new THREE.Vector3());
+    const size = boundingBox.getSize(new THREE.Vector3());
+    
+    // Calculate the maximum dimension of the model
+    const maxDim = Math.max(size.x, size.y, size.z);
+    
+    // If the model is very small, use a reasonable minimum viewing distance
+    const effectiveSize = Math.max(maxDim, 10);
+    
+    // Calculate camera distance based on the field of view and model size
+    const fov = camera.fov * (Math.PI / 180);
+    const baseDistance = (effectiveSize * 1.5) / Math.tan(fov / 2);
+    const distance = baseDistance / 2.6; // Zoom in 2.6x closer
+    
+    // Position camera to look at the model from a good angle
+    const cameraPosition = new THREE.Vector3(
+      center.x + distance * 0.5,
+      center.y + distance * 0.5,
+      center.z + distance
+    );
+    
+    camera.position.copy(cameraPosition);
+    camera.lookAt(center);
+    
+    // Set up controls
+    controls.target.copy(center);
+    controls.maxDistance = distance * 3;
+    controls.minDistance = distance * 0.2;
+    controls.saveState();
+    
+    // Update camera far plane
+    camera.far = distance * 10;
+    camera.updateProjectionMatrix();
+  };
+
   useEffect(() => {
     if (!mountRef.current || !svgContent) return;
+
+    // Clean up any existing canvas elements first
+    const existingCanvases = mountRef.current.querySelectorAll('canvas');
+    existingCanvases.forEach(canvas => {
+      if (canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
+      }
+    });
 
     // Scene setup
     const newScene = new THREE.Scene();
@@ -50,192 +106,169 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
     newScene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 50, 50);
+    directionalLight.position.set(100, 100, 50);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     newScene.add(directionalLight);
 
-    // Generate 3D models
-    const converter = new ClientSVGTo3D();
-    converter.parseSVG(svgContent);
+    // OrbitControls
+    import('three/examples/jsm/controls/OrbitControls').then(({ OrbitControls }) => {
+      const newControls = new OrbitControls(newCamera, newRenderer.domElement);
+      newControls.enableDamping = true;
+      newControls.dampingFactor = 0.05;
+      newControls.autoRotate = isRotating;
+      newControls.autoRotateSpeed = 2.0;
+      setControls(newControls);
 
-    // Update depths
-    Object.entries(colorDepths).forEach(([color, depth]) => {
-      converter.updateDepth(color, depth);
-    });
-
-    const meshesByColor = converter.generate3D();
-    let currentHeight = 0;
-    const allMeshes: THREE.Mesh[] = [];
-
-    // Add meshes to scene with height offsets
-    meshesByColor.forEach((meshes: THREE.Mesh[], color: string) => {
-      meshes.forEach((mesh: THREE.Mesh) => {
-        const clonedMesh = mesh.clone();
-        clonedMesh.position.z = currentHeight;
-        clonedMesh.castShadow = true;
-        clonedMesh.receiveShadow = true;
-        
-        newScene.add(clonedMesh);
-        allMeshes.push(clonedMesh);
-      });
+      // Load SVG using the new simplified approach with quality settings
+      const result = renderSVG(svgContent, colorDepths, qualitySettings);
       
-      const layer = converter.getColorLayers().find((l: any) => l.color === color);
-      if (layer) {
-        currentHeight += layer.depth + 0.2; // Base height
-      }
-    });
-
-    // Fit camera to view all objects
-    if (allMeshes.length > 0) {
-      const box = new THREE.Box3();
-      allMeshes.forEach(mesh => box.expandByObject(mesh));
-      
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = newCamera.fov * (Math.PI / 180);
-      const cameraZ = Math.abs((maxDim / 2) / Math.tan(fov / 2)) * 1.5;
-      
-      newCamera.position.set(center.x + cameraZ * 0.5, center.y + cameraZ * 0.5, center.z + cameraZ);
-      newCamera.lookAt(center);
-    }
-
-    // Mouse controls
-    let mouseX = 0;
-    let mouseY = 0;
-    let isMouseDown = false;
-
-    const handleMouseDown = (event: MouseEvent) => {
-      isMouseDown = true;
-      mouseX = event.clientX;
-      mouseY = event.clientY;
-    };
-
-    const handleMouseUp = () => {
-      isMouseDown = false;
-    };
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!isMouseDown) return;
-
-      const deltaX = event.clientX - mouseX;
-      const deltaY = event.clientY - mouseY;
-
-      const spherical = new THREE.Spherical();
-      spherical.setFromVector3(newCamera.position);
-      spherical.theta -= deltaX * 0.01;
-      spherical.phi += deltaY * 0.01;
-      spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
-
-      newCamera.position.setFromSpherical(spherical);
-      newCamera.lookAt(0, 0, 0);
-
-      mouseX = event.clientX;
-      mouseY = event.clientY;
-    };
-
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const scale = event.deltaY > 0 ? 1.1 : 0.9;
-      newCamera.position.multiplyScalar(scale);
-    };
-
-    newRenderer.domElement.addEventListener('mousedown', handleMouseDown);
-    newRenderer.domElement.addEventListener('mouseup', handleMouseUp);
-    newRenderer.domElement.addEventListener('mousemove', handleMouseMove);
-    newRenderer.domElement.addEventListener('wheel', handleWheel);
-
-    setScene(newScene);
-    setRenderer(newRenderer);
-    setCamera(newCamera);
-
-    // Animation loop
-    const animate = () => {
-      requestAnimationFrame(animate);
-      
-      if (isRotating && allMeshes.length > 0) {
-        allMeshes.forEach(mesh => {
-          mesh.rotation.z += 0.005;
-        });
+      // Clear scene and add new meshes
+      while (newScene.children.length > 2) { // Keep lights
+        newScene.remove(newScene.children[2]);
       }
       
-      newRenderer.render(newScene, newCamera);
-    };
-    animate();
+      // Add the 3D object to scene
+      newScene.add(result.object);
+      setRenderResult(result);
+      
+      // Fit camera to content
+      fitCamera(result.object);
+      
+      setScene(newScene);
+      setRenderer(newRenderer);
+      setCamera(newCamera);
 
-    // Cleanup
+      // Animation loop
+      const animate = () => {
+        requestAnimationFrame(animate);
+        newControls.update();
+        newRenderer.render(newScene, newCamera);
+      };
+      animate();
+    });
+
+    // Handle window resize
+    const handleResize = () => {
+      if (mountRef.current && newCamera && newRenderer) {
+        const width = mountRef.current.clientWidth;
+        const height = mountRef.current.clientHeight;
+        newCamera.aspect = width / height;
+        newCamera.updateProjectionMatrix();
+        newRenderer.setSize(width, height);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
     return () => {
+      window.removeEventListener('resize', handleResize);
       if (mountRef.current && newRenderer.domElement) {
         mountRef.current.removeChild(newRenderer.domElement);
       }
       newRenderer.dispose();
-      newScene.clear();
     };
-  }, [svgContent, colorDepths, isRotating]);
+  }, [svgContent, colorDepths, qualitySettings]);
+
+  // Update depths when colorDepths change (using the new update function)
+  useEffect(() => {
+    if (renderResult && scene) {
+      Object.entries(colorDepths).forEach(([color, depth]) => {
+        renderResult.update(depth, color);
+      });
+    }
+  }, [colorDepths, renderResult, scene]);
+
+  // Reset view when scale factor changes
+  useEffect(() => {
+    if (renderResult && controls && qualitySettings) {
+      // Add a small delay to ensure the model has been updated
+      const timer = setTimeout(() => {
+        resetView();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [qualitySettings?.scaleFactor, renderResult, controls]);
 
   // Toggle wireframe mode
   const toggleWireframe = () => {
-    if (!scene) return;
-    
-    scene.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
-        child.material.wireframe = !isWireframe;
-      }
-    });
-    setIsWireframe(!isWireframe);
+    if (renderResult && scene) {
+      renderResult.byColor.forEach((colorData: any[]) => {
+        colorData.forEach((data: any) => {
+          const material = data.mesh.material as THREE.MeshLambertMaterial;
+          if (isWireframe) {
+            // Switch back to solid
+            material.wireframe = false;
+          } else {
+            // Switch to wireframe
+            material.wireframe = true;
+          }
+        });
+      });
+      setIsWireframe(!isWireframe);
+    }
   };
 
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (!camera || !renderer || !mountRef.current) return;
-      
-      const width = mountRef.current.clientWidth;
-      const height = mountRef.current.clientHeight;
-      
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
-    };
+  // Toggle auto-rotation
+  const toggleRotation = () => {
+    if (controls) {
+      controls.autoRotate = !isRotating;
+      setIsRotating(!isRotating);
+    }
+  };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [camera, renderer]);
+  // Reset camera view
+  const resetView = () => {
+    if (renderResult && controls) {
+      fitCamera(renderResult.object);
+      controls.reset();
+    }
+  };
 
   return (
     <div className={`relative ${className}`}>
       <div 
         ref={mountRef} 
-        className="w-full h-96 border-2 border-gray-200 rounded-lg bg-gradient-to-br from-gray-50 to-gray-100"
+        className="w-full h-96 rounded-lg border-2 border-gray-200 bg-gray-50"
         style={{ minHeight: '400px' }}
       />
       
       {/* Controls */}
-      <div className="absolute top-2 right-2 flex gap-2">
+      <div className="absolute top-2 right-2 flex flex-col gap-2">
         <Button
-          size="sm"
           variant="outline"
+          size="sm"
           onClick={toggleWireframe}
-          className="bg-white/80 backdrop-blur-sm"
+          className="bg-white/90 backdrop-blur-sm"
         >
-          {isWireframe ? '🔲' : '📦'} {isWireframe ? 'Solid' : 'Wire'}
+          {isWireframe ? 'Solid' : 'Wireframe'}
         </Button>
+        
         <Button
-          size="sm"
           variant="outline"
-          onClick={() => setIsRotating(!isRotating)}
-          className="bg-white/80 backdrop-blur-sm"
+          size="sm"
+          onClick={toggleRotation}
+          className="bg-white/90 backdrop-blur-sm"
         >
-          {isRotating ? '⏸️' : '▶️'} {isRotating ? 'Pause' : 'Rotate'}
+          {isRotating ? 'Stop' : 'Rotate'}
+        </Button>
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={resetView}
+          className="bg-white/90 backdrop-blur-sm"
+        >
+          Reset View
         </Button>
       </div>
-
-      {/* Instructions */}
-      <div className="absolute bottom-2 left-2 text-xs text-gray-600 bg-white/80 backdrop-blur-sm rounded px-2 py-1">
-        🖱️ Drag to rotate • 🔄 Scroll to zoom
+      
+      {/* Info overlay */}
+      <div className="absolute bottom-2 left-2 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-gray-600">
+        <div>Left click + drag: Rotate</div>
+        <div>Right click + drag: Pan</div>
+        <div>Scroll: Zoom</div>
       </div>
     </div>
   );
