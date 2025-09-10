@@ -12,7 +12,7 @@ import { separateColors } from "@/lib/separateColors";
 import { joinSvg } from "@/lib/joinSvg";
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { STLPreview } from '@/components/STLPreview';
+import { STLPreview } from '@/components/STLPreview-new';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -299,7 +299,7 @@ export default function Home() {
     try {
       setStlProgress(25);
 
-      const response = await fetch('/api/convert-stl', {
+      const response = await fetch('/api/convert-stl-new', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

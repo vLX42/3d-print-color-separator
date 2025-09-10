@@ -1,152 +1,112 @@
 import * as THREE from 'three';
+import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 
-interface ColorLayer {
-  color: string;
-  paths: string[];
-  depth: number;
+export interface ColorDepth {
+  [color: string]: number;
 }
 
+export interface STLQualitySettings {
+  curveSegments?: number;
+  scaleFactor?: number;
+}
+
+const stokeMaterial = new THREE.LineBasicMaterial({
+  color: '#adb5bd',
+});
+
+export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qualitySettings: STLQualitySettings = {}) {
+  const defaultExtrusion = 1;
+  const loader = new SVGLoader();
+  
+  // Default quality settings - use even larger scale factor for better visibility
+  const curveSegments = qualitySettings.curveSegments ?? 8;
+  const scaleFactor = qualitySettings.scaleFactor ?? 2.0;  // Changed from 1.0 to 2.0
+  
+  try {
+    const svgData = loader.parse(svgContent);
+    
+    const svgGroup = new THREE.Group();
+    const updateMap: Array<{ shape: THREE.Shape; mesh: THREE.Mesh; lines: THREE.LineSegments }> = [];
+    const byColor = new Map<string, Array<{ mesh: THREE.Mesh; shape: THREE.Shape; lines: THREE.LineSegments; depth: number }>>();
+
+    svgGroup.scale.y *= -1;
+    
+    svgData.paths.forEach((path, pathIndex) => {
+      const shapes = SVGLoader.createShapes(path);
+
+      shapes.forEach((shape, shapeIndex) => {
+        const meshGeometry = new THREE.ExtrudeGeometry(shape, {
+          depth: defaultExtrusion,
+          bevelEnabled: false,
+          curveSegments: curveSegments, // Now adjustable
+        });
+        const linesGeometry = new THREE.EdgesGeometry(meshGeometry);
+        const fillMaterial = new THREE.MeshBasicMaterial({ color: path.color });
+        const mesh = new THREE.Mesh(meshGeometry, fillMaterial);
+        const lines = new THREE.LineSegments(linesGeometry, stokeMaterial);
+
+        const colorHex = path.color.getHexString();
+        const depth = colorDepths[colorHex] || defaultExtrusion;
+        
+        if (!byColor.has(colorHex)) {
+          byColor.set(colorHex, [{ mesh, shape, lines, depth }]);
+        } else {
+          byColor.get(colorHex)!.push({ mesh, shape, lines, depth });
+        }
+
+        updateMap.push({ shape, mesh, lines });
+        svgGroup.add(mesh, lines);
+      });
+    });
+
+    const box = new THREE.Box3().setFromObject(svgGroup);
+    const size = box.getSize(new THREE.Vector3());
+    const yOffset = size.y / -2;
+    const xOffset = size.x / -2;
+
+    svgGroup.children.forEach((item) => {
+      item.position.x = xOffset;
+      item.position.y = yOffset;
+      item.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    });
+    svgGroup.rotateX(-Math.PI / 2);
+
+    return {
+      object: svgGroup,
+      byColor,
+      update(extrusion: number, colorHex: string) {
+        const toUpdate = byColor.get(colorHex);
+        if (toUpdate) {
+          toUpdate.forEach((updateDetails) => {
+            const meshGeometry = new THREE.ExtrudeGeometry(updateDetails.shape, {
+              depth: extrusion,
+              bevelEnabled: false,
+              curveSegments: curveSegments, // Use the quality settings
+            });
+            const linesGeometry = new THREE.EdgesGeometry(meshGeometry);
+
+            updateDetails.mesh.geometry.dispose();
+            updateDetails.lines.geometry.dispose();
+            updateDetails.mesh.geometry = meshGeometry;
+            updateDetails.lines.geometry = linesGeometry;
+          });
+        }
+      },
+    };
+  } catch (error) {
+    console.error('Error parsing SVG:', error);
+    throw new Error(`Failed to parse SVG: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Legacy class for backward compatibility
 export class ClientSVGTo3D {
-  private colorLayers: Map<string, ColorLayer> = new Map();
   private defaultDepth = 2.0;
 
-  // Parse SVG in browser environment
-  parseSVG(svgContent: string): void {
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-    const paths = svgDoc.querySelectorAll('path');
-    
-    this.colorLayers.clear();
+  constructor() {}
 
-    paths.forEach((path) => {
-      const fill = path.getAttribute('fill') || '#000000';
-      const pathData = path.getAttribute('d') || '';
-      
-      if (pathData) {
-        const colorKey = fill.replace('#', '');
-        
-        if (!this.colorLayers.has(colorKey)) {
-          this.colorLayers.set(colorKey, {
-            color: colorKey,
-            paths: [],
-            depth: this.defaultDepth
-          });
-        }
-        
-        this.colorLayers.get(colorKey)!.paths.push(pathData);
-      }
-    });
-  }
-
-  // Simple SVG path to shape conversion for preview
-  private pathToShape(pathData: string): THREE.Shape {
-    const shape = new THREE.Shape();
-    
-    // Basic SVG path parsing for preview
-    const commands = pathData.match(/[MLHVCSQTAZ][^MLHVCSQTAZ]*/gi) || [];
-    
-    commands.forEach((command) => {
-      const type = command[0].toUpperCase();
-      const coords = command.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
-      
-      switch (type) {
-        case 'M': // Move to
-          if (coords.length >= 2) {
-            shape.moveTo(coords[0], -coords[1]);
-          }
-          break;
-        case 'L': // Line to
-          if (coords.length >= 2) {
-            shape.lineTo(coords[0], -coords[1]);
-          }
-          break;
-        case 'H': // Horizontal line
-          if (coords.length >= 1) {
-            const currentPoint = shape.currentPoint;
-            if (currentPoint) {
-              shape.lineTo(coords[0], currentPoint.y);
-            }
-          }
-          break;
-        case 'V': // Vertical line
-          if (coords.length >= 1) {
-            const currentPoint = shape.currentPoint;
-            if (currentPoint) {
-              shape.lineTo(currentPoint.x, -coords[0]);
-            }
-          }
-          break;
-        case 'Z': // Close path
-        case 'z':
-          shape.closePath();
-          break;
-      }
-    });
-    
-    return shape;
-  }
-
-  // Update depth for a specific color
-  updateDepth(color: string, depth: number): void {
-    const layer = this.colorLayers.get(color);
-    if (layer) {
-      layer.depth = depth;
-    }
-  }
-
-  // Generate 3D meshes for preview
-  generate3D(): Map<string, THREE.Mesh[]> {
-    const meshesByColor = new Map<string, THREE.Mesh[]>();
-    
-    this.colorLayers.forEach((layer, colorKey) => {
-      const meshes: THREE.Mesh[] = [];
-      
-      layer.paths.forEach((pathData, pathIndex) => {
-        try {
-          const shape = this.pathToShape(pathData);
-          
-          // Create extruded geometry for preview
-          const extrudeSettings = {
-            depth: layer.depth,
-            bevelEnabled: false,
-            steps: 1
-          };
-          
-          const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-          
-          // Create material with the color
-          const material = new THREE.MeshLambertMaterial({
-            color: `#${colorKey}`,
-            side: THREE.DoubleSide
-          });
-          
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.userData = { 
-            color: colorKey, 
-            depth: layer.depth, 
-            pathIndex 
-          };
-          
-          meshes.push(mesh);
-        } catch (error) {
-          console.warn(`Failed to process path ${pathIndex} for color ${colorKey}:`, error);
-        }
-      });
-      
-      if (meshes.length > 0) {
-        meshesByColor.set(colorKey, meshes);
-      }
-    });
-    
-    return meshesByColor;
-  }
-
-  // Get available colors and their current depths
-  getColorLayers(): Array<{ color: string; depth: number; pathCount: number }> {
-    return Array.from(this.colorLayers.entries()).map(([color, layer]) => ({
-      color,
-      depth: layer.depth,
-      pathCount: layer.paths.length
-    }));
+  renderSVG(svgData: string) {
+    const colorDepths: ColorDepth = {};
+    return renderSVG(svgData, colorDepths);
   }
 }
