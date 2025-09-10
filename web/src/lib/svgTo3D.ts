@@ -62,17 +62,17 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
       });
     });
 
-    // Center the group and scale it
-    const box = new THREE.Box3().setFromObject(svgGroup);
-    const size = box.getSize(new THREE.Vector3());
-    const yOffset = size.y / -2;
-    const xOffset = size.x / -2;
+    // First apply scaling to the entire group
+    svgGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
     
-    svgGroup.children.forEach((item) => {
-      item.position.x = xOffset;
-      item.position.y = yOffset;
-      item.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    });
+    // Then center the group properly
+    const box = new THREE.Box3().setFromObject(svgGroup);
+    const center = box.getCenter(new THREE.Vector3());
+    
+    // Move the entire group so its center is at the origin
+    svgGroup.position.sub(center);
+    
+    // Rotate the group to lay flat (SVG is typically in XY plane, we want XZ plane for 3D printing)
     svgGroup.rotateX(-Math.PI / 2);
 
     return { svgGroup, byColor };

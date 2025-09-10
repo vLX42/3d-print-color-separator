@@ -44,7 +44,8 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
     
     // Calculate camera distance based on the field of view and model size
     const fov = camera.fov * (Math.PI / 180);
-    const distance = (effectiveSize * 1.5) / Math.tan(fov / 2);
+    const baseDistance = (effectiveSize * 1.5) / Math.tan(fov / 2);
+    const distance = baseDistance / 2.6; // Zoom in 2.6x closer
     
     // Position camera to look at the model from a good angle
     const cameraPosition = new THREE.Vector3(
@@ -177,6 +178,17 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
       });
     }
   }, [colorDepths, renderResult, scene]);
+
+  // Reset view when scale factor changes
+  useEffect(() => {
+    if (renderResult && controls && qualitySettings) {
+      // Add a small delay to ensure the model has been updated
+      const timer = setTimeout(() => {
+        resetView();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [qualitySettings?.scaleFactor, renderResult, controls]);
 
   // Toggle wireframe mode
   const toggleWireframe = () => {
