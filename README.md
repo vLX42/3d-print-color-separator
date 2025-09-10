@@ -2,6 +2,8 @@
 
 Transform your AI-generated logos and designs into multi-color 3D printable files with automatic color separation and layer generation.
 
+🌐 **Live Demo**: [3dcolors.vlx.dk](https://3dcolors.vlx.dk)
+
 ![3D Print Color Separator](https://img.shields.io/badge/3D%20Printing-Multi--Color-blue?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=for-the-badge&logo=typescript)
@@ -106,6 +108,16 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
+
+## 🤖 Development Notes
+
+This project was built using **spec-driven AI development** - essentially describing what I wanted and letting AI implement it. The entire application was created in 2-3 hours of non-coding time, which is pretty amazing.
+
+**Technical Choices**: The code uses some older concepts like Next.js pages router and Tailwind CSS v3. Personally, I would have made different architectural decisions, but the AI chose a stable, well-documented approach that just works. Of course, the AI didn't know better since its knowledge will always be a bit behind current best practices.
+
+**The Process**: Started with a simple spec, iteratively refined features, and ended up with a fully functional tool. It's fascinating how much can be accomplished without writing code directly.
+
+**Shout out**: Big thanks to the developers of [Spec Kit](https://github.com/github/spec-kit) for pioneering spec-driven development approaches!
 
 ## 📄 License
 
