@@ -10,6 +10,7 @@ interface STLPreviewProps {
   qualitySettings?: {
     curveSegments: number;
     scaleFactor: number;
+    overlapAmount?: number;
   };
 }
 
@@ -17,7 +18,7 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
   svgContent,
   colorDepths,
   className = '',
-  qualitySettings = { curveSegments: 8, scaleFactor: 2.0 }
+  qualitySettings = { curveSegments: 8, scaleFactor: 2.0, overlapAmount: 0.1 }
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<THREE.Scene | null>(null);

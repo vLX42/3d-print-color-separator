@@ -18,6 +18,7 @@ export interface ColorDepth {
 export interface STLQualitySettings {
   curveSegments?: number;
   scaleFactor?: number;
+  overlapAmount?: number; // Overlap between layers for better connection
 }
 
 export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qualitySettings: STLQualitySettings = {}) {
@@ -27,6 +28,7 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
   // Default quality settings
   const curveSegments = qualitySettings.curveSegments ?? 8; // Default to 8 (good balance)
   const scaleFactor = qualitySettings.scaleFactor ?? 0.25; // Default to 0.25 (256 units)
+  const overlapAmount = qualitySettings.overlapAmount ?? 0.1; // Default 0.1mm overlap
   
   try {
     const svgData = loader.parse(svgContent);
@@ -40,7 +42,9 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
 
       shapes.forEach((shape) => {
         const colorHex = path.color.getHexString();
-        const depth = colorDepths[colorHex] || defaultExtrusion;
+        const baseDepth = colorDepths[colorHex] || defaultExtrusion;
+        // Add overlap to ensure layers connect properly
+        const depth = baseDepth + overlapAmount;
         
         const meshGeometry = new THREE.ExtrudeGeometry(shape, {
           depth: depth,
@@ -62,8 +66,8 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
       });
     });
 
-    // First apply scaling to the entire group
-    svgGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    // Apply scaling to X and Y axes only (preserve depth/Z values as specified in UI)
+    svgGroup.scale.set(scaleFactor, scaleFactor, 1.0);
     
     // Then center the group properly
     const box = new THREE.Box3().setFromObject(svgGroup);

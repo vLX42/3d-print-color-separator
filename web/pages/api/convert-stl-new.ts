@@ -12,6 +12,7 @@ interface STLRequest {
   qualitySettings?: {
     curveSegments: number;
     scaleFactor: number;
+    overlapAmount?: number;
   };
 }
 
@@ -79,7 +80,7 @@ export default function handler(
         content: stlContent
       }];
     } else {
-      // Export separate STL files by color
+      // Export separate STL files by color (overlap is handled in renderSVG)
       const colorGroups = new Map<string, THREE.Group>();
       
       // Group meshes by color
