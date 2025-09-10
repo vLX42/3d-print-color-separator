@@ -28,12 +28,15 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
   // Default quality settings
   const curveSegments = qualitySettings.curveSegments ?? 8; // Default to 8 (good balance)
   const scaleFactor = qualitySettings.scaleFactor ?? 0.25; // Default to 0.25 (256 units)
-  const overlapAmount = qualitySettings.overlapAmount ?? 0.1; // Default 0.1mm overlap
+  const overlapAmount = qualitySettings.overlapAmount ?? 0.2; // Increased default overlap to 0.2mm
   
   try {
     const svgData = loader.parse(svgContent);
     const svgGroup = new THREE.Group();
     const byColor = new Map<string, Array<{ mesh: THREE.Mesh; shape: THREE.Shape; depth: number }>>();
+    
+    // Create a base layer that covers all shapes with minimum depth
+    const allShapes: THREE.Shape[] = [];
 
     svgGroup.scale.y *= -1;
     
@@ -43,26 +46,42 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
       shapes.forEach((shape) => {
         const colorHex = path.color.getHexString();
         const baseDepth = colorDepths[colorHex] || defaultExtrusion;
-        // Add overlap to ensure layers connect properly
-        const depth = baseDepth + overlapAmount;
         
+        // Collect all shapes for base layer
+        allShapes.push(shape);
+        
+        // Create the main colored layer with increased depth for overlap
+        const mainDepth = baseDepth + overlapAmount;
         const meshGeometry = new THREE.ExtrudeGeometry(shape, {
-          depth: depth,
+          depth: mainDepth,
           bevelEnabled: false,
-          curveSegments: curveSegments, // Now adjustable
+          curveSegments: curveSegments,
           steps: 1
         });
         
         const fillMaterial = new THREE.MeshBasicMaterial({ color: path.color });
         const mesh = new THREE.Mesh(meshGeometry, fillMaterial);
 
+        // Create a base layer for this shape (extends below main layer)
+        const baseDepthExtended = overlapAmount * 2; // Base extends further down
+        const baseMeshGeometry = new THREE.ExtrudeGeometry(shape, {
+          depth: baseDepthExtended,
+          bevelEnabled: false,
+          curveSegments: curveSegments,
+          steps: 1
+        });
+        
+        const baseMesh = new THREE.Mesh(baseMeshGeometry, fillMaterial);
+        baseMesh.position.z = -overlapAmount; // Position base layer below main layer
+
         if (!byColor.has(colorHex)) {
-          byColor.set(colorHex, [{ mesh, shape, depth }]);
+          byColor.set(colorHex, [{ mesh, shape, depth: mainDepth }]);
         } else {
-          byColor.get(colorHex)!.push({ mesh, shape, depth });
+          byColor.get(colorHex)!.push({ mesh, shape, depth: mainDepth });
         }
 
         svgGroup.add(mesh);
+        svgGroup.add(baseMesh); // Add base layer too
       });
     });
 
