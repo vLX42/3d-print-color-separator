@@ -30,7 +30,7 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
     const boundingBox = new THREE.Box3().setFromObject(extrusions);
     const center = boundingBox.getCenter(new THREE.Vector3());
     const size = boundingBox.getSize(new THREE.Vector3());
-    const offset = 0.5;
+    const offset = 1.5; // Increased from 0.5 to 1.5 for better zoom level
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = camera.fov * (Math.PI / 180);
     const cameraZ = Math.abs((maxDim / 4) * Math.tan(fov * 2)) * offset;
@@ -48,6 +48,14 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
 
   useEffect(() => {
     if (!mountRef.current || !svgContent) return;
+
+    // Clean up any existing canvas elements first
+    const existingCanvases = mountRef.current.querySelectorAll('canvas');
+    existingCanvases.forEach(canvas => {
+      if (canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
+      }
+    });
 
     // Scene setup
     const newScene = new THREE.Scene();
