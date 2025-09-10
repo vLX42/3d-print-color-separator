@@ -28,7 +28,7 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
   // Default quality settings
   const curveSegments = qualitySettings.curveSegments ?? 8; // Default to 8 (good balance)
   const scaleFactor = qualitySettings.scaleFactor ?? 0.25; // Default to 0.25 (256 units)
-  const overlapAmount = qualitySettings.overlapAmount ?? 0.2; // Increased default overlap to 0.2mm
+  const overlapAmount = qualitySettings.overlapAmount ?? 0.5; // Increased default overlap to 0.5mm for better gap elimination
   
   try {
     const svgData = loader.parse(svgContent);
