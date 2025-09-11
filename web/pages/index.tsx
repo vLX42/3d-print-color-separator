@@ -376,11 +376,11 @@ export default function Home() {
         </title>
         <meta
           name="description"
-          content="Convert AI-generated logos and designs into multi-color 3D printable files. Automatically separate colors for multi-material 3D printing. Compatible with svg2solid and major slicers."
+          content="Transform any image into multi-color STL files for 3D printing. Upload PNG/JPG/SVG, get separate STL files for each color with interactive 3D preview. Perfect for Prusa MMU, Bambu AMS, and multi-material printing."
         />
         <meta
           name="keywords"
-          content="3D printing, multi-color, multi-material, Prusa MMU, Bambu AMS, svg2solid, color separation, 3D printer, filament, layers"
+          content="STL converter, 3D printing, multi-color, multi-material, Prusa MMU, Bambu AMS, STL files, 3D printer, filament, layers, Three.js, 3D preview"
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
