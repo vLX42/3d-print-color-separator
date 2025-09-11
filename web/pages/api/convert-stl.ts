@@ -1,9 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { renderSVG } from '../../src/lib/svgTo3D';
+import { renderSVG, BaseLayerSettings } from '../../src/lib/svgTo3D';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
 import * as THREE from 'three';
 import JSZip from 'jszip';
+import { getColorFilename } from '../../src/lib/colorNaming';
 
 interface STLRequest {
   svgContent: string;
@@ -13,6 +14,14 @@ interface STLRequest {
     curveSegments: number;
     scaleFactor: number;
     overlapAmount?: number;
+  };
+  baseLayer?: {
+    height: number;
+    color: string;
+  } | null;
+  mirrorSettings?: {
+    mirrorX: boolean;
+    mirrorY: boolean;
   };
 }
 
@@ -46,7 +55,7 @@ export default async function handler(
   }
 
   try {
-    const { svgContent, colorDepths = {}, exportType, qualitySettings }: STLRequest = req.body;
+    const { svgContent, colorDepths = {}, exportType, qualitySettings, baseLayer, mirrorSettings }: STLRequest = req.body;
 
     if (!svgContent) {
       return res.status(400).json({
@@ -56,7 +65,10 @@ export default async function handler(
     }
 
     // Use renderSVG to get the 3D object with proper quality settings
-    const result = renderSVG(svgContent, colorDepths, qualitySettings);
+    const result = renderSVG(svgContent, colorDepths, qualitySettings, baseLayer ? {
+      height: baseLayer.height,
+      color: baseLayer.color
+    } : undefined, mirrorSettings);
     
     if (!result || !result.svgGroup || result.svgGroup.children.length === 0) {
       return res.status(400).json({
@@ -79,29 +91,34 @@ export default async function handler(
     } else {
       // Export separate STL files as ZIP
       const zip = new JSZip();
-      const colorGroups = new Map<string, THREE.Group>();
       
-      // Group meshes by color
-      result.svgGroup.children.forEach((child: THREE.Object3D) => {
-        if (child instanceof THREE.Mesh) {
-          const material = child.material as THREE.MeshBasicMaterial;
-          const colorHex = material.color.getHexString();
-          
-          if (!colorGroups.has(colorHex)) {
-            colorGroups.set(colorHex, new THREE.Group());
+      // Use the byColor data from renderSVG which properly handles all layers including base
+      if (result.byColor) {
+        for (const [colorKey, meshData] of result.byColor.entries()) {
+          if (meshData.length > 0) {
+            const group = new THREE.Group();
+            
+            // Add all meshes for this color to the group
+            meshData.forEach((data) => {
+              const clonedMesh = data.mesh.clone();
+              group.add(clonedMesh);
+            });
+            
+            if (group.children.length > 0) {
+              const stlContent = exporter.parse(group);
+              
+              // Generate human-readable filename
+              let filename: string;
+              if (colorKey === 'base') {
+                filename = 'base-layer.stl';
+              } else {
+                const colorName = getColorFilename(colorKey);
+                filename = `${colorName}-layer.stl`;
+              }
+              
+              zip.file(filename, stlContent);
+            }
           }
-          
-          // Clone the mesh for the color group
-          const clonedMesh = child.clone();
-          colorGroups.get(colorHex)!.add(clonedMesh);
-        }
-      });
-      
-      // Export each color group as separate STL and add to ZIP
-      for (const [colorHex, group] of colorGroups.entries()) {
-        if (group.children.length > 0) {
-          const stlContent = exporter.parse(group);
-          zip.file(`layer-${colorHex}.stl`, stlContent);
         }
       }
       

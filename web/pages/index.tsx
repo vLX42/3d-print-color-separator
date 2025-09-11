@@ -41,6 +41,21 @@ export default function Home() {
   const [isConvertingSTL, setIsConvertingSTL] = useState(false);
   const [stlProgress, setStlProgress] = useState(0);
 
+  // Debounced color depths (to avoid constant re-rendering during slider changes)
+  const [debouncedColorDepths, setDebouncedColorDepths] = useState<Record<string, number>>({});
+
+  // Base layer settings
+  const [baseLayerEnabled, setBaseLayerEnabled] = useState(false); // Disabled by default
+  const [baseLayerHeight, setBaseLayerHeight] = useState(0.2); // Default 0.2mm
+  const [baseLayerColor, setBaseLayerColor] = useState<string>(""); // Will be set when palette is available
+
+  // Debounced base layer height
+  const [debouncedBaseLayerHeight, setDebouncedBaseLayerHeight] = useState(0.2);
+
+  // Mirror settings
+  const [mirrorX, setMirrorX] = useState(false);
+  const [mirrorY, setMirrorY] = useState(false);
+
   // STL quality settings
   const [stlQuality, setStlQuality] = useState({
     curveSegments: 8,
@@ -61,6 +76,24 @@ export default function Home() {
 
     return () => clearTimeout(timer);
   }, [stlQuality]);
+
+  // Debounce color depths changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedColorDepths(colorDepths);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [colorDepths]);
+
+  // Debounce base layer height changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedBaseLayerHeight(baseLayerHeight);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [baseLayerHeight]);
 
   // Convert different file types to PNG format
   const convertToPng = async (
@@ -286,6 +319,14 @@ export default function Home() {
       depths[hexColor] = 2.0; // Default 2mm depth
     });
     setColorDepths(depths);
+    
+    // Set default base layer color to the first color in palette
+    if (paletteColors.length > 0 && !baseLayerColor) {
+      const firstColor = paletteColors[0]
+        .map((c: number) => c.toString(16).padStart(2, "0"))
+        .join("");
+      setBaseLayerColor(firstColor);
+    }
   };
 
   // Update color depth
@@ -318,9 +359,17 @@ export default function Home() {
         },
         body: JSON.stringify({
           svgContent: joinedSvg,
-          colorDepths: colorDepths, // Fixed: use colorDepths instead of depths
+          colorDepths: debouncedColorDepths, // Use debounced values
           exportType,
           qualitySettings: stlQuality,
+          baseLayer: baseLayerEnabled ? {
+            height: debouncedBaseLayerHeight,
+            color: baseLayerColor,
+          } : null,
+          mirrorSettings: {
+            mirrorX: mirrorX,
+            mirrorY: mirrorY,
+          },
         }),
       });
 
@@ -955,9 +1004,17 @@ export default function Home() {
                 <CardContent className="p-6">
                   <div className="space-y-6">
                     <div>
-                      <h3 className="font-semibold text-gray-800 mb-3">
-                        🎛️ Layer Depths
-                      </h3>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="font-semibold text-gray-800">
+                          🎛️ Layer Depths
+                        </h3>
+                        {JSON.stringify(colorDepths) !== JSON.stringify(debouncedColorDepths) && (
+                          <div className="flex items-center gap-1 text-xs text-blue-600">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                            Updating...
+                          </div>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-600 mb-4">
                         Adjust the thickness (in mm) for each color layer.
                         Higher values create more prominent features.
@@ -1006,6 +1063,84 @@ export default function Home() {
                             );
                           })}
                       </div>
+                    </div>
+
+                    {/* Base Layer Controls */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="font-semibold text-gray-800">
+                          🏗️ Base Layer
+                        </h3>
+                        <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full font-medium">
+                          BETA
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={baseLayerEnabled}
+                          onChange={(e) => setBaseLayerEnabled(e.target.checked)}
+                          className="w-4 h-4"
+                        />
+                        <Label className="text-sm text-gray-600">
+                          Enable solid base layer
+                        </Label>
+                      </div>
+                      {baseLayerEnabled && (
+                        <div className="space-y-4 pl-4 border-l-2 border-gray-200">
+                          <p className="text-sm text-gray-600">
+                            Creates a solid foundation layer combining all non-transparent areas.
+                            Perfect for multi-material prints requiring a stable base.
+                          </p>
+                          
+                          {/* Base Layer Height */}
+                          <div className="bg-white rounded-lg border p-3">
+                            <Label className="text-sm font-medium mb-2 block">
+                              Base Layer Height
+                            </Label>
+                            <div className="flex items-center gap-2">
+                              <Slider
+                                value={[baseLayerHeight]}
+                                onValueChange={(value) => setBaseLayerHeight(value[0])}
+                                max={2.0}
+                                min={0.1}
+                                step={0.1}
+                                className="flex-1"
+                              />
+                              <span className="text-sm text-gray-600 w-12">
+                                {baseLayerHeight.toFixed(1)}mm
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Base Layer Color Selection */}
+                          {palette && (
+                            <div className="bg-white rounded-lg border p-3">
+                              <Label className="text-sm font-medium mb-2 block">
+                                Base Layer Color
+                              </Label>
+                              <div className="grid grid-cols-4 gap-2">
+                                {palette.map((color, index) => {
+                                  const hexColor = color
+                                    .map((c: number) => c.toString(16).padStart(2, "0"))
+                                    .join("");
+                                  return (
+                                    <button
+                                      key={index}
+                                      onClick={() => setBaseLayerColor(hexColor)}
+                                      className={`w-10 h-10 rounded-lg border-2 transition-all ${
+                                        baseLayerColor === hexColor
+                                          ? "border-blue-500 ring-2 ring-blue-200"
+                                          : "border-gray-300 hover:border-gray-400"
+                                      }`}
+                                      style={{ backgroundColor: `#${hexColor}` }}
+                                      title={`Color ${index + 1}: #${hexColor}`}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* STL Quality Settings */}
@@ -1075,6 +1210,46 @@ export default function Home() {
                       </div>
                     </div>
 
+                    {/* Mirror Settings */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="font-semibold text-gray-800">
+                          🪞 Mirror Settings
+                        </h3>
+                      </div>
+                      <div className="space-y-3">
+                        <p className="text-sm text-gray-600">
+                          Mirror the model along horizontal or vertical axes. Useful for creating reversed designs.
+                        </p>
+                        <div className="bg-white rounded-lg border p-3 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              id="mirrorX"
+                              checked={mirrorX}
+                              onChange={(e) => setMirrorX(e.target.checked)}
+                              className="w-4 h-4"
+                            />
+                            <Label htmlFor="mirrorX" className="text-sm font-medium">
+                              Mirror Horizontally (X-axis)
+                            </Label>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              id="mirrorY"
+                              checked={mirrorY}
+                              onChange={(e) => setMirrorY(e.target.checked)}
+                              className="w-4 h-4"
+                            />
+                            <Label htmlFor="mirrorY" className="text-sm font-medium">
+                              Mirror Vertically (Y-axis)
+                            </Label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* 3D Preview */}
                     <div>
                       <h3 className="font-semibold text-gray-800 mb-3">
@@ -1086,8 +1261,17 @@ export default function Home() {
                       </p>
                       <STLPreview
                         svgContent={joinedSvg}
-                        colorDepths={colorDepths}
+                        colorDepths={debouncedColorDepths}
                         qualitySettings={debouncedStlQuality}
+                        baseLayer={baseLayerEnabled ? {
+                          enabled: true,
+                          height: debouncedBaseLayerHeight,
+                          color: baseLayerColor,
+                        } : { enabled: false, height: 0, color: "" }}
+                        mirrorSettings={{
+                          mirrorX: mirrorX,
+                          mirrorY: mirrorY,
+                        }}
                         className="mb-4"
                       />
                     </div>

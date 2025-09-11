@@ -12,13 +12,24 @@ interface STLPreviewProps {
     scaleFactor: number;
     overlapAmount?: number;
   };
+  baseLayer?: {
+    enabled: boolean;
+    height: number;
+    color: string;
+  };
+  mirrorSettings?: {
+    mirrorX: boolean;
+    mirrorY: boolean;
+  };
 }
 
 export const STLPreview: React.FC<STLPreviewProps> = ({
   svgContent,
   colorDepths,
   className = '',
-  qualitySettings = { curveSegments: 8, scaleFactor: 2.0, overlapAmount: 0.1 }
+  qualitySettings = { curveSegments: 8, scaleFactor: 2.0, overlapAmount: 0.1 },
+  baseLayer,
+  mirrorSettings
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<THREE.Scene | null>(null);
@@ -122,7 +133,7 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
       setControls(newControls);
 
       // Load SVG using the new simplified approach with quality settings
-      const result = renderSVG(svgContent, colorDepths, qualitySettings);
+      const result = renderSVG(svgContent, colorDepths, qualitySettings, baseLayer, mirrorSettings);
       
       // Clear scene and add new meshes
       while (newScene.children.length > 2) { // Keep lights
@@ -169,7 +180,7 @@ export const STLPreview: React.FC<STLPreviewProps> = ({
       }
       newRenderer.dispose();
     };
-  }, [svgContent, colorDepths, qualitySettings]);
+  }, [svgContent, qualitySettings, baseLayer, mirrorSettings]); // Only recreate scene for these changes
 
   // Update depths when colorDepths change (using the new update function)
   useEffect(() => {

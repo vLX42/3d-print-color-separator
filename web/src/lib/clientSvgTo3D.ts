@@ -10,11 +10,28 @@ export interface STLQualitySettings {
   scaleFactor?: number;
 }
 
+export interface BaseLayerSettings {
+  enabled: boolean;
+  height: number;
+  color: string;
+}
+
+export interface MirrorSettings {
+  mirrorX: boolean;
+  mirrorY: boolean;
+}
+
 const stokeMaterial = new THREE.LineBasicMaterial({
   color: '#adb5bd',
 });
 
-export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qualitySettings: STLQualitySettings = {}) {
+export function renderSVG(
+  svgContent: string, 
+  colorDepths: ColorDepth = {}, 
+  qualitySettings: STLQualitySettings = {},
+  baseLayer?: BaseLayerSettings,
+  mirrorSettings?: MirrorSettings
+) {
   const defaultExtrusion = 1;
   const loader = new SVGLoader();
   
@@ -28,6 +45,7 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
     const svgGroup = new THREE.Group();
     const updateMap: Array<{ shape: THREE.Shape; mesh: THREE.Mesh; lines: THREE.LineSegments }> = [];
     const byColor = new Map<string, Array<{ mesh: THREE.Mesh; shape: THREE.Shape; lines: THREE.LineSegments; depth: number }>>();
+    const allShapes: THREE.Shape[] = [];
 
     svgGroup.scale.y *= -1;
     
@@ -35,8 +53,14 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
       const shapes = SVGLoader.createShapes(path);
 
       shapes.forEach((shape, shapeIndex) => {
+        // Collect all shapes for base layer
+        allShapes.push(shape);
+        
+        const colorHex = path.color.getHexString();
+        const depth = colorDepths[colorHex] || defaultExtrusion;
+        
         const meshGeometry = new THREE.ExtrudeGeometry(shape, {
-          depth: defaultExtrusion,
+          depth: depth, // Use the actual depth from colorDepths
           bevelEnabled: false,
           curveSegments: curveSegments, // Now adjustable
         });
@@ -44,9 +68,18 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
         const fillMaterial = new THREE.MeshBasicMaterial({ color: path.color });
         const mesh = new THREE.Mesh(meshGeometry, fillMaterial);
         const lines = new THREE.LineSegments(linesGeometry, stokeMaterial);
-
-        const colorHex = path.color.getHexString();
-        const depth = colorDepths[colorHex] || defaultExtrusion;
+        
+        // Apply mirroring if specified
+        if (mirrorSettings) {
+          if (mirrorSettings.mirrorX) {
+            mesh.scale.x *= -1;
+            lines.scale.x *= -1;
+          }
+          if (mirrorSettings.mirrorY) {
+            mesh.scale.y *= -1;
+            lines.scale.y *= -1;
+          }
+        }
         
         if (!byColor.has(colorHex)) {
           byColor.set(colorHex, [{ mesh, shape, lines, depth }]);
@@ -58,6 +91,42 @@ export function renderSVG(svgContent: string, colorDepths: ColorDepth = {}, qual
         svgGroup.add(mesh, lines);
       });
     });
+
+    // Generate base layer if enabled
+    if (baseLayer?.enabled && allShapes.length > 0) {
+      allShapes.forEach((shape) => {
+        const baseGeometry = new THREE.ExtrudeGeometry(shape, {
+          depth: baseLayer.height,
+          bevelEnabled: false,
+          curveSegments: curveSegments,
+        });
+        
+        const baseColor = new THREE.Color(`#${baseLayer.color}`);
+        const baseMaterial = new THREE.MeshBasicMaterial({ color: baseColor });
+        const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
+        const baseLinesGeometry = new THREE.EdgesGeometry(baseGeometry);
+        const baseLines = new THREE.LineSegments(baseLinesGeometry, stokeMaterial);
+        
+        // Apply mirroring to base layer
+        if (mirrorSettings) {
+          if (mirrorSettings.mirrorX) {
+            baseMesh.scale.x *= -1;
+            baseLines.scale.x *= -1;
+          }
+          if (mirrorSettings.mirrorY) {
+            baseMesh.scale.y *= -1;
+            baseLines.scale.y *= -1;
+          }
+        }
+        
+        // Position base layer below all existing layers (including any overlap systems)
+        // This ensures the base layer acts as a true foundation
+        baseMesh.position.z = -baseLayer.height - 1.0; // Gap below overlap systems
+        baseLines.position.z = -baseLayer.height - 1.0;
+        
+        svgGroup.add(baseMesh, baseLines);
+      });
+    }
 
     const box = new THREE.Box3().setFromObject(svgGroup);
     const size = box.getSize(new THREE.Vector3());

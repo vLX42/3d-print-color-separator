@@ -14,39 +14,59 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method === 'POST') {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
+  }
+
+  try {
     const form = formidable();
-    form.parse(req, (err, fields, files) => {
-      if (err) {
-        res.status(500).json({ error: 'Error parsing form data' });
-        return;
-      }
-
-      const file = Array.isArray(files.image) ? files.image[0] : files.image;
-      if (!file) {
-        res.status(400).json({ error: 'No image file provided' });
-        return;
-      }
-
-      const path = file.filepath;
-      const buffer = fs.readFileSync(path);
-
-      const color = fields.color ? fields.color.toString() : '#000000';
-
-      const params = {
-        color: color,
-      };
-
-      trace(buffer, params, (traceErr, svg) => {
-        if (traceErr) {
-          res.status(500).json({ error: 'Error tracing image' });
-          return;
-        }
-        res.status(200).json({ svg });
+    const [fields, files] = await new Promise<[formidable.Fields, formidable.Files]>((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) reject(err);
+        else resolve([fields, files]);
       });
     });
-  } else {
-    res.setHeader('Allow', ['POST']);
-    res.status(405).end(`Method ${req.method} Not Allowed`);
+
+    const file = Array.isArray(files.image) ? files.image[0] : files.image;
+    if (!file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const path = file.filepath;
+    const buffer = fs.readFileSync(path);
+
+    // Validate color parameter
+    const colorParam = Array.isArray(fields.color) ? fields.color[0] : fields.color;
+    const color = colorParam ? colorParam.toString() : '#000000';
+
+    const params = {
+      color: color,
+    };
+
+    console.log(`Tracing image with color: ${color}`);
+
+    // Promisify the trace function
+    const svg = await new Promise<string>((resolve, reject) => {
+      trace(buffer, params, (traceErr, svg) => {
+        if (traceErr) {
+          console.error('Trace error:', traceErr);
+          reject(new Error('Error tracing image'));
+        } else if (svg) {
+          resolve(svg);
+        } else {
+          reject(new Error('No SVG generated from trace'));
+        }
+      });
+    });
+
+    console.log('Trace completed successfully');
+    res.status(200).json({ svg });
+
+  } catch (error) {
+    console.error('Trace API error:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Error processing trace request' 
+    });
   }
 }
