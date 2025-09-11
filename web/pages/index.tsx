@@ -989,9 +989,6 @@ export default function Home() {
           {/* STL Conversion Section - Active when content available */}
           {joinedSvg && joinedSvg.trim() !== "" && (
             <div className="mt-8">
-              <div className="text-green-500 font-bold mb-4">
-                DEBUG: ACTIVE SECTION SHOWING
-              </div>
               <Card className="shadow-lg border-0 bg-gradient-to-br from-green-50 to-emerald-50">
                 <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-t-lg">
                   <CardTitle className="text-xl flex items-center gap-2">
