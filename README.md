@@ -1,5 +1,9 @@
 # 3D Print Color Separator
 
+## Hint:
+
+There this tool out there that is much better, so go use this instead :) https://makerworld.com/en/makerlab?from=navbar
+
 🎨 **Transform any image into multi-color 3D printable files!**
 
 A powerful web application that automatically converts images into separate STL files for multi-material 3D printing. Perfect for creating colorful logos, signs, and decorative objects with your 3D printer.
